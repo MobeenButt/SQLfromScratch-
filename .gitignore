@@ -1,0 +1,38 @@
+# Compiled binary files
+*.exe
+*.out
+*.o
+*.obj
+*.dll
+*.so
+*.a
+*.lib
+*.pdb
+
+# Temporary files
+*.log
+*.tmp
+*.cache
+*.swp
+*.swo
+*.bak
+.DS_Store
+Thumbs.db
+
+# IDE-specific files (VSCode, CLion, CodeBlocks, etc.)
+.vscode/
+.idea/
+*.code-workspace
+*.cbp
+*.layout
+
+# Build system files
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+
+# JSON & Index files (if auto-generated)
+*.json~
+*.idx
+*.db-journal
