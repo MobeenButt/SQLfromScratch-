@@ -1,0 +1,62 @@
+{
+    "databases": {
+        "please": {
+            "tables": {
+                "please": {
+                    "please": {
+                        "primary_key": true,
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "saahi": {
+            "tables": {
+                "person": {
+                    "info": {
+                        "primary_key": false,
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "test": {
+            "tables": {
+                "test": {
+                    "test": {
+                        "primary_key": true,
+                        "type": "int"
+                    }
+                }
+            }
+        },
+        "uet": {
+            "tables": {
+                "uet": {
+                    "uet": {
+                        "primary_key": true,
+                        "type": "int"
+                    }
+                },
+                "uet2": {
+                    "test": {
+                        "primary_key": true,
+                        "type": "int"
+                    },
+                    "uet2": {
+                        "primary_key": true,
+                        "type": "int"
+                    }
+                }
+            }
+        }
+    },
+    "tables": {
+        "saahi": {
+            "name": {
+                "primary_key": true,
+                "type": "string"
+            }
+        }
+    }
+}
