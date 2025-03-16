@@ -1,8 +1,11 @@
+#include "BPlusTree.h"
 #include "Database.h"
 #include <iostream>
+
 using namespace std;
 
 Database::Database() {}
+
 
 Database::~Database() {
     for (auto& table : tables) {
@@ -32,4 +35,11 @@ void Database::showTableSchema(const string& tableName) {
         return;
     }
     tables[tableName]->displayTable();
+}
+
+Table* Database::getTable(const string& tableName) {
+    if (tables.find(tableName) != tables.end()) {
+        return tables[tableName];
+    }
+    return nullptr;
 }
