@@ -10,6 +10,8 @@
 #endif
 #include "json.hpp"
 
+void recordMenu(Database& db,json& meta);
+
 using json = nlohmann::json;
 using namespace std;
 // namespace fs = filesystem;
@@ -66,7 +68,8 @@ void showMenu() {
     cout << "3. Add a column to a table" << endl;
     cout << "4. Insert data into table" << endl;
     cout << "5. Show table schema" << endl;
-    cout << "6. Exit" << endl;
+    cout << "6. Manage Records" << endl;
+    cout << "7. Exit" << endl;
     cout << "Enter your choice: ";
 }
 
@@ -90,6 +93,7 @@ int main() {
                     metadata["databases"][dbName] = json::object();
                     mkdir((DATABASES_FOLDER + dbName).c_str());
                     saveMetadata(metadata);
+
                     cout << "Database '" << dbName << "' created successfully.\n";
                 } else {
                     cout << "Database already exists!\n";
@@ -172,11 +176,91 @@ int main() {
                 break;
             
             case 6:
+                recordMenu(db,metadata);
+                break;    
+            case 7:
                 cout << "Exiting...\n";
                 return 0;
             
             default:
                 cout << "Invalid choice. Try again.\n";
+        }
+    }
+}
+
+void recordMenu(Database& db, json& metadata) {
+    string dbName, tableName;
+    int primaryKey;
+    string value;
+
+    cout << "Enter database name: ";
+    getline(cin, dbName);
+
+    // Validate database existence
+    if (!metadata["databases"].contains(dbName)) {
+        cout << "Database not found!\n";
+        return;
+    }
+
+    while (true) {
+        cout << "\nRecord Management for Database: " << dbName << "\n";
+        cout << "1. Insert Record\n";
+        cout << "2. Search Record\n";
+        cout << "3. Delete Record\n";
+        cout << "4. Back to Main Menu\n";
+        cout << "Enter your choice: ";
+
+        int choice;
+        cin >> choice;
+        cin.ignore();
+
+        switch (choice) {
+            case 1:
+                cout << "Enter table name: ";
+                getline(cin, tableName);
+                if (!metadata["databases"][dbName]["tables"].contains(tableName)) {
+                    cout << "Table not found!\n";
+                    break;
+                }
+                cout << "Enter primary key: ";
+                cin >> primaryKey;
+                cout << "Enter data: ";
+                cin.ignore();
+                getline(cin, value);
+                db.getTable(tableName)->insertRecord(primaryKey, value);
+                cout << "Record inserted into '" << tableName << "'.\n";
+                break;
+
+            case 2:
+                cout << "Enter table name: ";
+                getline(cin, tableName);
+                if (!metadata["databases"][dbName]["tables"].contains(tableName)) {
+                    cout << "Table not found!\n";
+                    break;
+                }
+                cout << "Enter primary key: ";
+                cin >> primaryKey;
+                db.getTable(tableName)->searchRecord(primaryKey);
+                break;
+
+            case 3:
+                cout << "Enter table name: ";
+                getline(cin, tableName);
+                if (!metadata["databases"][dbName]["tables"].contains(tableName)) {
+                    cout << "Table not found!\n";
+                    break;
+                }
+                cout << "Enter primary key: ";
+                cin >> primaryKey;
+                db.getTable(tableName)->deleteRecord(primaryKey);
+                cout << "Record deleted from '" << tableName << "'.\n";
+                break;
+
+            case 4:
+                return;
+
+            default:
+                cout << "Invalid choice! Try again.\n";
         }
     }
 }
