@@ -3,7 +3,6 @@
 
 BPlusTree::Node::Node(bool leaf) : isLeaf(leaf), nextLeaf(nullptr) {}
 
-
 json BPlusTree::Node::serialize() {
     json j;
     j["isLeaf"] = isLeaf;

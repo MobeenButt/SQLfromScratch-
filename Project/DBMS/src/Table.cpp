@@ -19,7 +19,7 @@ bool Table::hasColumn(const string& columnName) const
     return columns.find(columnName) != columns.end();
 }
 
-void Table::insertRecord(int primaryKey, std::string data) {
+void Table::insertRecord(int primaryKey, string data) {
     index.insert(primaryKey, data);
 }
 
@@ -27,6 +27,6 @@ void Table::deleteRecord(int primaryKey) {
     index.remove(primaryKey);
 }
 
-std::string Table::searchRecord(int primaryKey) {
+string Table::searchRecord(int primaryKey) {
     return index.search(primaryKey);
 }
