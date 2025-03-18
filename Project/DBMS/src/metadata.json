@@ -1,61 +1,18 @@
 {
     "databases": {
-        "please": {
+        "S": {
             "tables": {
-                "please": {
-                    "please": {
-                        "primary_key": true,
-                        "type": "string"
-                    }
-                }
-            }
-        },
-        "saahi": {
-            "tables": {
-                "person": {
-                    "info": {
+                "S": {
+                    "S": {
                         "primary_key": false,
-                        "type": "string"
+                        "type": "S"
                     }
                 }
             }
         },
-        "test": {
+        "School": {
             "tables": {
-                "test": {
-                    "test": {
-                        "primary_key": true,
-                        "type": "int"
-                    }
-                }
-            }
-        },
-        "uet": {
-            "tables": {
-                "uet": {
-                    "uet": {
-                        "primary_key": true,
-                        "type": "int"
-                    }
-                },
-                "uet2": {
-                    "test": {
-                        "primary_key": true,
-                        "type": "int"
-                    },
-                    "uet2": {
-                        "primary_key": true,
-                        "type": "int"
-                    }
-                }
-            }
-        }
-    },
-    "tables": {
-        "saahi": {
-            "name": {
-                "primary_key": true,
-                "type": "string"
+                "Teacher": {}
             }
         }
     }
