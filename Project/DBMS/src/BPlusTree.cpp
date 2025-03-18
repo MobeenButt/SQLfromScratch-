@@ -1,271 +1,524 @@
+// #include "BPlusTree.h"
+// #include <iostream>
+// #include <algorithm>
+// #include <fstream>
+
+// using namespace std;
+
+// // Constructor
+// BPlusTreeNode::BPlusTreeNode(bool leaf) {
+//     isLeaf = leaf;
+//     nextLeaf = nullptr;
+// }
+
+// // BPlusTree Constructor
+// BPlusTree::BPlusTree(int order) {
+//     root = new BPlusTreeNode(true);
+//     maxKeys = order - 1;
+//     loadFromDisk();
+// }
+
+// // Insert function
+// void BPlusTree::insert(int key, const std::string& value) {
+//     BPlusTreeNode* node = root;
+
+//     // Find correct leaf node
+//     while (!node->isLeaf) {
+//         int i = 0;
+//         while (i < static_cast<int>(node->keys.size()) && key > node->keys[i]) i++;
+//         node = node->children[i];
+//     }
+
+//     // Insert in leaf
+//     auto it = std::lower_bound(node->keys.begin(), node->keys.end(), key);
+//     node->keys.insert(it, key);
+//     node->values.insert(node->values.begin() + static_cast<int>(it - node->keys.begin()), value);
+
+//     // Split if necessary
+//     if (static_cast<int>(node->keys.size()) > maxKeys) {
+//         splitLeafNode(node, key, value);
+//     }
+
+//     saveToDisk();
+// }
+
+// // Search function
+// std::string BPlusTree::search(int key) {
+//     BPlusTreeNode* node = root;
+
+//     while (!node->isLeaf) {
+//         int i = 0;
+//         while (i < static_cast<int>(node->keys.size()) && key > node->keys[i]) i++;
+//         node = node->children[i];
+//     }
+
+//     for (int i = 0; i < static_cast<int>(node->keys.size()); i++) {
+//         if (node->keys[i] == key) {
+//             return node->values[i];
+//         }
+//     }
+//     return "Not found";
+// }
+
+// // Remove function (Basic Implementation)
+// void BPlusTree::remove(int key) {
+//     BPlusTreeNode* node = root;
+//     while (!node->isLeaf) {
+//         int i = 0;
+//         while (i < static_cast<int>(node->keys.size()) && key > node->keys[i]) i++;
+//         node = node->children[i];
+//     }
+
+//     auto it = std::find(node->keys.begin(), node->keys.end(), key);
+//     if (it != node->keys.end()) {
+//         int index = static_cast<int>(it - node->keys.begin());
+//         node->keys.erase(it);
+//         node->values.erase(node->values.begin() + index);
+//         saveToDisk();
+//     }
+// }
+
+// // Split leaf node
+// void BPlusTree::splitLeafNode(BPlusTreeNode* node, int key, const std::string& value) {
+//     int mid = (node->keys.size() + 1) / 2;
+//     BPlusTreeNode* newLeaf = new BPlusTreeNode(true);
+
+//     newLeaf->keys.assign(node->keys.begin() + mid, node->keys.end());
+//     newLeaf->values.assign(node->values.begin() + mid, node->values.end());
+
+//     node->keys.resize(mid);
+//     node->values.resize(mid);
+
+//     newLeaf->nextLeaf = node->nextLeaf;
+//     node->nextLeaf = newLeaf;
+
+//     if (node == root) {
+//         BPlusTreeNode* newRoot = new BPlusTreeNode(false);
+//         newRoot->keys.push_back(newLeaf->keys[0]);
+//         newRoot->children.push_back(node);
+//         newRoot->children.push_back(newLeaf);
+//         root = newRoot;
+//     } else {
+//         insertInternal(newLeaf->keys[0], findParent(root, node), newLeaf);
+//     }
+// }
+
+// // Split internal node
+// void BPlusTree::splitInternalNode(BPlusTreeNode* node) {
+//     int mid = node->keys.size() / 2;
+//     BPlusTreeNode* newInternal = new BPlusTreeNode(false);
+
+//     int pushUpKey = node->keys[mid];
+    
+//     newInternal->keys.assign(node->keys.begin() + mid + 1, node->keys.end());
+//     newInternal->children.assign(node->children.begin() + mid + 1, node->children.end());
+
+//     node->keys.resize(mid);
+//     node->children.resize(mid + 1);
+
+//     if (node == root) {
+//         BPlusTreeNode* newRoot = new BPlusTreeNode(false);
+//         newRoot->keys.push_back(pushUpKey);
+//         newRoot->children.push_back(node);
+//         newRoot->children.push_back(newInternal);
+//         root = newRoot;
+//     } else {
+//         insertInternal(pushUpKey, findParent(root, node), newInternal);
+//     }
+// }
+
+// // Insert into internal node
+// void BPlusTree::insertInternal(int key, BPlusTreeNode* parent, BPlusTreeNode* child) {
+//     auto it = std::lower_bound(parent->keys.begin(), parent->keys.end(), key);
+//     int index = it - parent->keys.begin();
+
+//     parent->keys.insert(it, key);
+//     parent->children.insert(parent->children.begin() + index + 1, child);
+
+//     if (static_cast<int>(parent->keys.size()) > maxKeys) {
+//         splitInternalNode(parent);
+//     }
+// }
+
+// // Find parent of a node
+// BPlusTreeNode* BPlusTree::findParent(BPlusTreeNode* current, BPlusTreeNode* child) {
+//     if (current->isLeaf || current->children[0]->isLeaf) return nullptr;
+
+//     for (size_t i = 0; i < current->children.size(); i++) {
+//         if (current->children[i] == child) return current;
+//     }
+
+//     for (size_t i = 0; i < current->children.size(); i++) {
+//         BPlusTreeNode* parent = findParent(current->children[i], child);
+//         if (parent) return parent;
+//     }
+
+//     return nullptr;
+// }
+
+// Save to Disk
+// void BPlusTree::saveToDisk() {
+//     ofstream file("BPlusTree.db", ios::trunc);
+//     if (!file) {
+//         cerr << "Error: Cannot open file for saving.\n";
+//         return;
+//     }
+
+//     BPlusTreeNode* node = root;
+//     while (!node->isLeaf) node = node->children[0];
+
+//     while (node) {
+//         for (size_t i = 0; i < node->keys.size(); i++) {
+//             file << node->keys[i] << " " << node->values[i] << "\n";
+//         }
+//         node = node->nextLeaf;
+//     }
+//     file.close();
+// }
+
+// void BPlusTree::saveToDisk() {
+//     ofstream file("BPlusTree.db", ios::trunc);
+    
+//     if (!file) {
+//         cerr << "Error: Cannot open file for saving.\n";
+//         perror("Error"); // Print system error message
+//         return;
+//     }
+
+//     cout << "Saving data to BPlusTree.db...\n"; // Debugging message
+
+//     BPlusTreeNode* node = root;
+//     while (!node->isLeaf) node = node->children[0];
+
+//     while (node) {
+//         for (size_t i = 0; i < node->keys.size(); i++) {
+//             file << node->keys[i] << " " << node->values[i] << "\n";
+//         }
+//         node = node->nextLeaf;
+//     }
+    
+//     file.close();
+//     cout << "Data successfully saved!\n";
+// }
+
+// // Load from Disk
+// void BPlusTree::loadFromDisk() {
+//     ifstream file("BPlusTree.db");
+//     if (!file) return;
+
+//     int key;
+//     string value;
+//     while (file >> key) {
+//         file.ignore();
+//         getline(file, value);
+//         insert(key, value);
+//     }
+//     file.close();
+// }
+
+// // Display Tree
+// void BPlusTree::display() {
+//     BPlusTreeNode* node = root;
+//     while (!node->isLeaf) node = node->children[0];
+
+//     while (node) {
+//         for (int key : node->keys) {
+//             cout << key << " ";
+//         }
+//         cout << " | ";
+//         node = node->nextLeaf;
+//     }
+//     cout << endl;
+// }
 #include "BPlusTree.h"
 #include <iostream>
+#include <algorithm>
+#include <fstream>
 
-BPlusTree::Node::Node(bool leaf) : isLeaf(leaf), nextLeaf(nullptr) {}
+using namespace std;
 
-json BPlusTree::Node::serialize() {
-    json j;
-    j["isLeaf"] = isLeaf;
-    j["keys"] = keys;
-    j["values"] = values;
-    j["nextLeaf"] = (nextLeaf != nullptr);
-    return j;
+// Constructor
+BPlusTreeNode::BPlusTreeNode(bool leaf) {
+    isLeaf = leaf;
+    nextLeaf = nullptr;
 }
 
-BPlusTree::Node* BPlusTree::Node::deserialize(const json& j) {
-    Node* node = new Node(j["isLeaf"]);
-    node->keys = j["keys"].get<std::vector<int>>();
-    node->values = j["values"].get<std::vector<std::string>>();
+// BPlusTree Constructor
+BPlusTree::BPlusTree(int order) {
+    root = new BPlusTreeNode(true);
+    maxKeys = order - 1;
+}
+
+// Destructor
+BPlusTree::~BPlusTree() {
+    deleteTree(root);
+}
+void BPlusTree::deleteTree(BPlusTreeNode* node) {
+    if (!node) return;
+    if (!node->isLeaf) {
+        for (BPlusTreeNode* child : node->children) {
+            deleteTree(child);
+        }
+    }
+    delete node;
+}
+
+// Insert function
+void BPlusTree::insert(int key, const std::string& value) {
+    BPlusTreeNode* node = root;
+
+    // Find correct leaf node
+    while (!node->isLeaf) {
+        int i = 0;
+        while (i < static_cast<int>(node->keys.size()) && key > node->keys[i]) i++;
+        node = node->children[i];
+    }
+
+    // Insert in leaf
+    auto it = std::lower_bound(node->keys.begin(), node->keys.end(), key);
+    node->keys.insert(it, key);
+    node->values.insert(node->values.begin() + static_cast<int>(it - node->keys.begin()), value);
+
+    // Split if necessary
+    if (static_cast<int>(node->keys.size()) > maxKeys) {
+        splitLeafNode(node, key, value);
+    }
+}
+
+// Search function
+std::string BPlusTree::search(int key) {
+    BPlusTreeNode* node = root;
+
+    while (!node->isLeaf) {
+        int i = 0;
+        while (i < static_cast<int>(node->keys.size()) && key > node->keys[i]) i++;
+        node = node->children[i];
+    }
+
+    for (int i = 0; i < static_cast<int>(node->keys.size()); i++) {
+        if (node->keys[i] == key) {
+            return node->values[i];
+        }
+    }
+    return "Not found";
+}
+
+// Remove function (Basic Implementation)
+void BPlusTree::remove(int key) {
+    BPlusTreeNode* node = root;
+    while (!node->isLeaf) {
+        int i = 0;
+        while (i < static_cast<int>(node->keys.size()) && key > node->keys[i]) i++;
+        node = node->children[i];
+    }
+
+    auto it = std::find(node->keys.begin(), node->keys.end(), key);
+    if (it != node->keys.end()) {
+        int index = static_cast<int>(it - node->keys.begin());
+        node->keys.erase(it);
+        node->values.erase(node->values.begin() + index);
+    }
+}
+
+// Split leaf node
+void BPlusTree::splitLeafNode(BPlusTreeNode* node, int key, const std::string& value) {
+    int mid = (node->keys.size() + 1) / 2;
+    BPlusTreeNode* newLeaf = new BPlusTreeNode(true);
+
+    newLeaf->keys.assign(node->keys.begin() + mid, node->keys.end());
+    newLeaf->values.assign(node->values.begin() + mid, node->values.end());
+
+    node->keys.resize(mid);
+    node->values.resize(mid);
+
+    newLeaf->nextLeaf = node->nextLeaf;
+    node->nextLeaf = newLeaf;
+
+    if (node == root) {
+        BPlusTreeNode* newRoot = new BPlusTreeNode(false);
+        newRoot->keys.push_back(newLeaf->keys[0]);
+        newRoot->children.push_back(node);
+        newRoot->children.push_back(newLeaf);
+        root = newRoot;
+    } else {
+        insertInternal(newLeaf->keys[0], findParent(root, node), newLeaf);
+    }
+}
+
+// Split internal node
+void BPlusTree::splitInternalNode(BPlusTreeNode* node) {
+    int mid = node->keys.size() / 2;
+    BPlusTreeNode* newInternal = new BPlusTreeNode(false);
+
+    int pushUpKey = node->keys[mid];
+    
+    newInternal->keys.assign(node->keys.begin() + mid + 1, node->keys.end());
+    newInternal->children.assign(node->children.begin() + mid + 1, node->children.end());
+
+    node->keys.resize(mid);
+    node->children.resize(mid + 1);
+
+    if (node == root) {
+        BPlusTreeNode* newRoot = new BPlusTreeNode(false);
+        newRoot->keys.push_back(pushUpKey);
+        newRoot->children.push_back(node);
+        newRoot->children.push_back(newInternal);
+        root = newRoot;
+    } else {
+        insertInternal(pushUpKey, findParent(root, node), newInternal);
+    }
+}
+
+// Insert into internal node
+void BPlusTree::insertInternal(int key, BPlusTreeNode* parent, BPlusTreeNode* child) {
+    auto it = std::lower_bound(parent->keys.begin(), parent->keys.end(), key);
+    int index = it - parent->keys.begin();
+
+    parent->keys.insert(it, key);
+    parent->children.insert(parent->children.begin() + index + 1, child);
+
+    if (static_cast<int>(parent->keys.size()) > maxKeys) {
+        splitInternalNode(parent);
+    }
+}
+
+// Find parent of a node
+BPlusTreeNode* BPlusTree::findParent(BPlusTreeNode* current, BPlusTreeNode* child) {
+    if (current->isLeaf || current->children[0]->isLeaf) return nullptr;
+
+    for (size_t i = 0; i < current->children.size(); i++) {
+        if (current->children[i] == child) return current;
+    }
+
+    for (size_t i = 0; i < current->children.size(); i++) {
+        BPlusTreeNode* parent = findParent(current->children[i], child);
+        if (parent) return parent;
+    }
+
+    return nullptr;
+}
+
+// Save a node to disk
+void BPlusTree::saveNodeToDisk(std::ofstream& file, BPlusTreeNode* node) {
+    if (!node) return;
+
+    // Save node metadata
+    file << node->isLeaf << " " << node->keys.size() << " ";
+
+    // Save keys
+    for (int key : node->keys) {
+        file << key << " ";
+    }
+
+    // Save values (if leaf)
+    if (node->isLeaf) {
+        for (const std::string& value : node->values) {
+            file << value << " ";
+        }
+    }
+
+    // Save children (if not leaf)
+    if (!node->isLeaf) {
+        for (BPlusTreeNode* child : node->children) {
+            saveNodeToDisk(file, child);
+        }
+    }
+}
+
+// Load a node from disk
+BPlusTreeNode* BPlusTree::loadNodeFromDisk(std::ifstream& file) {
+    if (!file) return nullptr;
+
+    bool isLeaf;
+    int numKeys;
+    file >> isLeaf >> numKeys;
+
+    BPlusTreeNode* node = new BPlusTreeNode(isLeaf);
+
+    // Load keys
+    for (int i = 0; i < numKeys; i++) {
+        int key;
+        file >> key;
+        node->keys.push_back(key);
+    }
+
+    // Load values (if leaf)
+    if (isLeaf) {
+        for (int i = 0; i < numKeys; i++) {
+            std::string value;
+            file >> value;
+            node->values.push_back(value);
+        }
+    }
+
+    // Load children (if not leaf)
+    if (!isLeaf) {
+        for (int i = 0; i <= numKeys; i++) {
+            BPlusTreeNode* child = loadNodeFromDisk(file);
+            node->children.push_back(child);
+        }
+    }
+
     return node;
 }
 
-BPlusTree::BPlusTree() {
-    root = new Node(true);
-    loadFromFile(); // Load existing data
-}
-
-BPlusTree::~BPlusTree() {
-    saveToFile(); // Save before exiting
-}
-
-void BPlusTree::insert(int key, std::string value) {
-    Node* leaf = root;
-    while (!leaf->isLeaf) {
-        auto it = std::upper_bound(leaf->keys.begin(), leaf->keys.end(), key);
-        int index = it - leaf->keys.begin();
-        leaf = leaf->children[index];
+// Save B+ Tree to disk
+void BPlusTree::saveToDisk(const std::string& filename) {
+    std::ofstream file(filename, std::ios::binary);
+    if (!file) {
+        std::cerr << "Error: Cannot open file for saving.\n";
+        return;
     }
 
-    auto it = std::upper_bound(leaf->keys.begin(), leaf->keys.end(), key);
-    int index = it - leaf->keys.begin();
-    leaf->keys.insert(it, key);
-    leaf->values.insert(leaf->values.begin() + index, value);
-
-    if (leaf->keys.size() >= ORDER) {
-        splitLeaf(leaf);
-    }
-    
-    saveToFile();
+    saveNodeToDisk(file, root);
+    file.close();
 }
 
-
-
-
-std::string BPlusTree::search(int key) {
-    Node* current = root;
-    while (!current->isLeaf) {
-        auto it = std::upper_bound(current->keys.begin(), current->keys.end(), key);
-        int index = it - current->keys.begin();
-        current = current->children[index];
+void BPlusTree::loadFromDisk(const std::string& filename) {
+    std::ifstream file(filename, std::ios::binary);
+    if (!file) {
+        std::cerr << "Error: Cannot open file for loading.\n";
+        return;
     }
 
-    for (size_t i = 0; i < current->keys.size(); i++) {
-        if (current->keys[i] == key) {
-            return current->values[i]; // Return the found value
-        }
-    }
-
-    return "Key not found";
+    root = loadNodeFromDisk(file);
+    file.close();
 }
 
+// void BPlusTree::saveToDisk(const std::string& filename) {
+//     std::ofstream file(filename, std::ios::binary);
+//     if (!file) {
+//         std::cerr << "Error: Cannot open file for saving.\n";
+//         return;
+//     }
 
+//     saveNodeToDisk(file, root);
+//     file.close();
+// }
 
-void BPlusTree::saveToFile() {
-    std::ofstream file("bplustree.json");
-    json j;
-    j["root"] = root->serialize();
-    file << j.dump(4);
-}
+// // Load B+ Tree from disk
+// void BPlusTree::loadFromDisk(const std::string& filename) {
+//     std::ifstream file(filename, std::ios::binary);
+//     if (!file) {
+//         std::cerr << "Error: Cannot open file for loading.\n";
+//         return;
+//     }
 
-void BPlusTree::loadFromFile() {
-    std::ifstream file("bplustree.json");
-    if (!file) return;
-    json j;
-    file >> j;
-    root = Node::deserialize(j["root"]);
-}
+//     root = loadNodeFromDisk(file);
+//     file.close();
+// }
 
-void BPlusTree::printTree(Node* node, int level) {
-    if (node == nullptr) return;
-    std::cout << "Level " << level << ": ";
-    for (int key : node->keys) {
-        std::cout << key << " ";
-    }
-    std::cout << "\n";
-    
-    if (!node->isLeaf) {
-        for (Node* child : node->children) {
-            printTree(child, level + 1);
-        }
-    }
-}
+// Display Tree
 void BPlusTree::display() {
-    BPlusTree::printTree(root, 0);
-}
+    BPlusTreeNode* node = root;
+    while (!node->isLeaf) node = node->children[0];
 
-void BPlusTree::insertInternal(int key, Node* leftChild, Node* rightChild) {
-    if (leftChild->parent == nullptr) {
-        root = new Node(false);
-        root->keys.push_back(key);
-        root->children.push_back(leftChild);
-        root->children.push_back(rightChild);
-        leftChild->parent = root;
-        rightChild->parent = root;
-        return;
-    }
-    
-    Node* parent = leftChild->parent;
-    auto it = std::upper_bound(parent->keys.begin(), parent->keys.end(), key);
-    int index = it - parent->keys.begin();
-    parent->keys.insert(it, key);
-    parent->children.insert(parent->children.begin() + index + 1, rightChild);
-    rightChild->parent = parent;
-    
-    if (parent->keys.size() >= ORDER)
-        splitInternal(parent);
-}
-
-void BPlusTree::splitLeaf(Node* leaf) {
-    int mid = ORDER / 2;
-    Node* newLeaf = new Node(true);
-    newLeaf->keys.assign(leaf->keys.begin() + mid, leaf->keys.end());
-    newLeaf->values.assign(leaf->values.begin() + mid, leaf->values.end());
-    leaf->keys.resize(mid);
-    leaf->values.resize(mid);
-    newLeaf->nextLeaf = leaf->nextLeaf;
-    leaf->nextLeaf = newLeaf;
-    newLeaf->parent = leaf->parent;
-    
-    insertInternal(newLeaf->keys[0], leaf, newLeaf);
-}
-
-void BPlusTree::splitInternal(Node* node) {
-    int mid = ORDER / 2;
-    Node* newNode = new Node(false);
-    newNode->keys.assign(node->keys.begin() + mid + 1, node->keys.end());
-    newNode->children.assign(node->children.begin() + mid + 1, node->children.end());
-    node->keys.resize(mid);
-    node->children.resize(mid + 1);
-    newNode->parent = node->parent;
-    
-    for (auto* child : newNode->children)
-        child->parent = newNode;
-    
-    insertInternal(node->keys[mid], node, newNode);
-}
-void BPlusTree::mergeLeaf(Node* leaf) {
-    if (!leaf->parent) return; // Root case
-
-    Node* parent = leaf->parent;
-    int index = -1;
-
-    for (size_t i = 0; i < parent->children.size(); i++) {
-        if (parent->children[i] == leaf) {
-            index = i;
-            break;
+    while (node) {
+        for (int key : node->keys) {
+            cout << key << " ";
         }
+        cout << " | ";
+        node = node->nextLeaf;
     }
-
-    if (index > 0) { // Merge with left sibling
-        Node* leftSibling = parent->children[index - 1];
-        leftSibling->keys.insert(leftSibling->keys.end(), leaf->keys.begin(), leaf->keys.end());
-        leftSibling->values.insert(leftSibling->values.end(), leaf->values.begin(), leaf->values.end());
-        leftSibling->nextLeaf = leaf->nextLeaf;
-        
-        parent->keys.erase(parent->keys.begin() + (index - 1));
-        parent->children.erase(parent->children.begin() + index);
-        delete leaf;
-    } else if (index < parent->children.size() - 1) { // Merge with right sibling
-        Node* rightSibling = parent->children[index + 1];
-        leaf->keys.insert(leaf->keys.end(), rightSibling->keys.begin(), rightSibling->keys.end());
-        leaf->values.insert(leaf->values.end(), rightSibling->values.begin(), rightSibling->values.end());
-        leaf->nextLeaf = rightSibling->nextLeaf;
-        
-        parent->keys.erase(parent->keys.begin() + index);
-        parent->children.erase(parent->children.begin() + (index + 1));
-        delete rightSibling;
-    }
-
-    if (parent->keys.size() < (ORDER / 2)) {
-        mergeInternal(parent);
-    }
-}
-void BPlusTree::mergeInternal(Node* node) {
-    if (!node->parent) { // If root becomes empty, update root
-        if (node->children.size() == 1) {
-            root = node->children[0];
-            root->parent = nullptr;
-            delete node;
-        }
-        return;
-    }
-
-    Node* parent = node->parent;
-    int index = -1;
-
-    for (size_t i = 0; i < parent->children.size(); i++) {
-        if (parent->children[i] == node) {
-            index = i;
-            break;
-        }
-    }
-
-    if (index > 0) { // Merge with left sibling
-        Node* leftSibling = parent->children[index - 1];
-        leftSibling->keys.push_back(parent->keys[index - 1]);
-        leftSibling->keys.insert(leftSibling->keys.end(), node->keys.begin(), node->keys.end());
-        leftSibling->children.insert(leftSibling->children.end(), node->children.begin(), node->children.end());
-
-        for (Node* child : node->children) {
-            child->parent = leftSibling;
-        }
-
-        parent->keys.erase(parent->keys.begin() + (index - 1));
-        parent->children.erase(parent->children.begin() + index);
-        delete node;
-    } else if (index < parent->children.size() - 1) { // Merge with right sibling
-        Node* rightSibling = parent->children[index + 1];
-        node->keys.push_back(parent->keys[index]);
-        node->keys.insert(node->keys.end(), rightSibling->keys.begin(), rightSibling->keys.end());
-        node->children.insert(node->children.end(), rightSibling->children.begin(), rightSibling->children.end());
-
-        for (Node* child : rightSibling->children) {
-            child->parent = node;
-        }
-
-        parent->keys.erase(parent->keys.begin() + index);
-        parent->children.erase(parent->children.begin() + (index + 1));
-        delete rightSibling;
-    }
-
-    if (parent->keys.size() < (ORDER / 2)) {
-        mergeInternal(parent);
-    }
-}
-
-void BPlusTree::remove(int key) {
-    Node* leaf = root;
-    
-    while (!leaf->isLeaf) {
-        auto it = std::upper_bound(leaf->keys.begin(), leaf->keys.end(), key);
-        int index = it - leaf->keys.begin();
-        leaf = leaf->children[index];
-    }
-
-    auto it = std::find(leaf->keys.begin(), leaf->keys.end(), key);
-    if (it == leaf->keys.end()) {
-        std::cout << "Key not found\n";
-        return;
-    }
-
-    int index = it - leaf->keys.begin();
-    leaf->keys.erase(it);
-    leaf->values.erase(leaf->values.begin() + index);
-
-    // Merge if needed
-    if (leaf->keys.size() < (ORDER / 2)) {
-        mergeLeaf(leaf);
-    }
-
-    saveToFile();
+    cout << endl;
 }

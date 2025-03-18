@@ -1,3 +1,11 @@
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
+=======
+#include <iostream>
+>>>>>>> Stashed changes
+=======
+#include <iostream>
+>>>>>>> Stashed changes
 #include "Database.h"
 #include <iostream>
 #include <string>
@@ -61,7 +69,12 @@ json loadTableData(const string& dbName, const string& tableName) {
     return tableData;
 }
 
+using namespace std;
+
+using namespace std;
+
 void showMenu() {
+<<<<<<< Updated upstream
     cout << "\nDatabase Management System" << endl;
     cout << "1. Create a new database" << endl;
     cout << "2. Create a new table" << endl;
@@ -71,6 +84,17 @@ void showMenu() {
     cout << "6. Manage Records" << endl;
     cout << "7. Exit" << endl;
     cout << "Enter your choice: ";
+=======
+    cout << "\nDatabase System\n";
+    cout << "1. Create Table\n";
+    cout << "2. Add Column\n";
+    cout << "3. Insert Record\n";
+    cout << "4. Search Record\n";
+    cout << "5. Delete Record\n";
+    cout << "6. Show Tables\n";
+    cout << "7. Exit\n";
+    cout << "Enter choice: ";
+>>>>>>> Stashed changes
 }
 
 int main() {
@@ -83,7 +107,15 @@ int main() {
     while (true) {
         showMenu();
         cin >> choice;
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
         cin.ignore(); // Clear newline character
+=======
+        cin.ignore(); // Clear input buffer
+>>>>>>> Stashed changes
+=======
+        cin.ignore(); // Clear input buffer
+>>>>>>> Stashed changes
 
         switch (choice) {
             case 1:
@@ -94,6 +126,8 @@ int main() {
                     mkdir((DATABASES_FOLDER + dbName).c_str());
                     saveMetadata(metadata);
 
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
                     cout << "Database '" << dbName << "' created successfully.\n";
                 } else {
                     cout << "Database already exists!\n";
@@ -261,6 +295,100 @@ void recordMenu(Database& db, json& metadata) {
 
             default:
                 cout << "Invalid choice! Try again.\n";
+=======
+=======
+>>>>>>> Stashed changes
+        if (choice == 1) { 
+            // Create Table
+            cout << "Enter table name: ";
+            getline(cin, tableName);
+            if (db.createTable(tableName)) {
+                cout << "Table created successfully.\n";
+            } else {
+                cout << "Table already exists!\n";
+            }
+        } 
+        else if (choice == 2) { 
+            // Add Column
+            cout << "Enter table name: ";
+            getline(cin, tableName);
+            cout << "Enter column name: ";
+            getline(cin, columnName);
+            cout << "Enter type (int/string): ";
+            getline(cin, type);
+
+            Table* table = db.getTable(tableName);
+            if (table) {
+                table->addColumn(columnName, type, true);
+                cout << "Column added.\n";
+            } else {
+                cout << "Table not found!\n";
+            }
+        } 
+        else if (choice == 3) { 
+            // Insert Record
+            cout << "Enter table name: ";
+            getline(cin, tableName);
+            cout << "Enter primary key: ";
+            cin >> key;
+            cin.ignore();
+            cout << "Enter data: ";
+            getline(cin, data);
+
+            Table* table = db.getTable(tableName);
+            if (table) {
+                table->insertRecord(key, data);
+                cout << "Record inserted.\n";
+            } else {
+                cout << "Table not found!\n";
+            }
+        } 
+        else if (choice == 4) { 
+            // Search Record
+            cout << "Enter table name: ";
+            getline(cin, tableName);
+            cout << "Enter primary key: ";
+            cin >> key;
+
+            Table* table = db.getTable(tableName);
+            if (table) {
+                string result = table->searchRecord(key);
+                if (result == "Not found") {
+                    cout << "Record not found.\n";
+                } else {
+                    cout << "Record: " << result << endl;
+                }
+            } else {
+                cout << "Table not found!\n";
+            }
+        } 
+        else if (choice == 5) { 
+            // Delete Record
+            cout << "Enter table name: ";
+            getline(cin, tableName);
+            cout << "Enter primary key: ";
+            cin >> key;
+
+            Table* table = db.getTable(tableName);
+            if (table) {
+                table->deleteRecord(key);
+                cout << "Record deleted.\n";
+            } else {
+                cout << "Table not found!\n";
+            }
+        } 
+        else if (choice == 6) { 
+            // Show all tables
+            db.listTables();
+        } 
+        else if (choice == 7) { 
+            // Exit
+            cout << "Exiting...\n";
+            return 0;
+        } 
+        else { 
+            cout << "Invalid choice. Try again.\n";
+>>>>>>> Stashed changes
         }
     }
 }
