@@ -13,9 +13,8 @@ private:
 public:
 // Column(const string& name,const string& type, bool isprimarykey=false);
 // Column()=default;
-Column(const string& name = "", const string& type = "", bool isprimarykey = false);
-
-void displayColumns() const;
+// Column(const string& name = "", const string& type = "", bool isprimarykey = false);
+Column(string name, string type, bool isPrimaryKey);
 };
 #endif 
 

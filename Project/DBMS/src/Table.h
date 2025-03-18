@@ -1,31 +1,23 @@
+// Table.h
 #ifndef TABLE_H
 #define TABLE_H
+
+#include <vector>
+#include <map>
 #include "Column.h"
-#include "BPLusTree.h"
-#include <string>
-#include <iostream>
-#include <unordered_map>
-using namespace std;
-class Table
-{
-private:
-    string name;
-    unordered_map<string, Column> columns;
-    BPlusTree index; // Index on primary key
+#include "BPlusTree.h"
 
-
+class Table {
 public:
-    Table(const string &name);
+    string name;
+    vector<Column> columns;
+    BPlusTree index;
 
-    void addColumn(const string &columnName, const string &columnType, bool isPrimaryKey = false);
-    void displayTable() const;
-    bool hasColumn(const string &columnName) const;
-
-    void insertRecord(int primaryKey, std::string data);
+    Table(string name);
+    void addColumn(string columnName, string type, bool isPrimaryKey);
+    void insertRecord(int primaryKey, string data);
+    void searchRecord(int primaryKey);
     void deleteRecord(int primaryKey);
-    std::string searchRecord(int primaryKey);
-
-
 };
 
 #endif
