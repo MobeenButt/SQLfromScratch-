@@ -1,114 +1,127 @@
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-#include "BPlusTree.h"
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 #include "Database.h"
-#include "BPlusTree.h"
 #include <iostream>
+#include <fstream>
+#include <stdexcept>
+#include <sys/stat.h>
+#include <direct.h>
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
 using namespace std;
 
-Database::Database() {}
-
+Database::Database(const std::string& dbName) : name(dbName) {
+    // Ensure the "tables" directory exists
+#ifdef _WIN32
+    _mkdir("tables"); // Windows command
+#else
+    system("mkdir -p tables"); // Linux/macOS command
+#endif
+    loadMetadata();
+}
 
 Database::~Database() {
-    for (auto& table : tables) {
-        delete table.second; 
-    }
+    // No need to manually delete tables, as unique_ptr automatically handles it
 }
-void Database::createTable(const string& tableName) {
+
+bool Database::createTable(const string& tableName) {
     if (tables.find(tableName) != tables.end()) {
         cout << "Table '" << tableName << "' already exists!\n";
-        return;
+        return false;
     }
-    tables[tableName] = new Table(tableName);
-    cout << "Table '" << tableName << "' created.\n";
+
+    try {
+        tables[tableName] = make_unique<Table>(tableName);
+        saveMetadata();
+        cout << "Table '" << tableName << "' created.\n";
+        return true;
+    } catch (const bad_alloc& e) {
+        cerr << "Memory allocation failed while creating table: " << e.what() << endl;
+        return false;
+    }
 }
 
 void Database::addColumnToTable(const string& tableName, const string& colName, const string& colType, bool isPrimaryKey) {
-    if (tables.find(tableName) == tables.end()) {
+    auto it = tables.find(tableName);
+    if (it == tables.end()) {
         cout << "Table not found!\n";
         return;
     }
-    tables[tableName]->addColumn(colName, colType, isPrimaryKey);
+    it->second->addColumn(colName, colType, isPrimaryKey);
 }
 
 void Database::showTableSchema(const string& tableName) {
-    if (tables.find(tableName) == tables.end()) {
+    auto it = tables.find(tableName);
+    if (it == tables.end()) {
         cout << "Table not found!\n";
         return;
     }
-    tables[tableName]->displayTable();
+    it->second->displayTable();
 }
 
 Table* Database::getTable(const string& tableName) {
-    if (tables.find(tableName) != tables.end()) {
-        return tables[tableName];
-=======
-// Database::Database(std::string name) : name(name) {}
-Database::Database(std::string name) : name(name) {
-    loadMetadata();
-}
-
-=======
-// Database::Database(std::string name) : name(name) {}
-Database::Database(std::string name) : name(name) {
-    loadMetadata();
-}
-
->>>>>>> Stashed changes
-bool Database::createTable(string tableName) {
-    if (tables.find(tableName) != tables.end()) return false; // Avoid duplicate tables
-
-    tables[tableName] = Table(tableName);
-    saveMetadata(); // Save table name
-    return true;
-}
-
-
-
-Table* Database::getTable(std::string tableName) {
     auto it = tables.find(tableName);
-    if (it != tables.end()) {
-        return &it->second;
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-    }
-    return nullptr;
+    return (it != tables.end()) ? it->second.get() : nullptr;
 }
+
 void Database::listTables() {
-    std::cout << "Tables in database:\n";
+    cout << "Tables in database '" << name << "':\n";
     for (const auto& table : tables) {
-        std::cout << "- " << table.first << std::endl;
+        cout << "- " << table.first << endl;
     }
 }
 
 void Database::saveMetadata() {
-    ofstream file("database_metadata.db", ios::trunc);
+    ofstream file("database_metadata.db", ios::binary | ios::trunc);
     if (!file) {
         cerr << "Error: Cannot open metadata file.\n";
         return;
     }
 
-    for (const auto& pair : tables) {
-        file << pair.first << "\n";  // Store table names
+    try {
+        size_t numTables = tables.size();
+        file.write(reinterpret_cast<char*>(&numTables), sizeof(numTables));
+
+        for (const auto& table : tables) {
+            size_t nameLen = table.first.size();
+            file.write(reinterpret_cast<char*>(&nameLen), sizeof(nameLen));
+            file.write(table.first.c_str(), nameLen);
+        }
+    } catch (const exception& e) {
+        cerr << "Error while saving metadata: " << e.what() << endl;
     }
+
     file.close();
 }
-void Database::loadMetadata() {
-    ifstream file("database_metadata.db");
-    if (!file) return;
 
-    string tableName;
-    while (getline(file, tableName)) {
-        tables[tableName] = Table(tableName);
+void Database::loadMetadata() {
+    ifstream file("database_metadata.db", ios::binary);
+    if (!file) {
+        cerr << "Metadata file not found. Creating a new database.\n";
+        return;
     }
-    file.close();
+
+    try {
+        size_t numTables;
+        if (!file.read(reinterpret_cast<char*>(&numTables), sizeof(numTables))) {
+            cerr << "Error: Failed to read number of tables from metadata.\n";
+            return;
+        }
+
+        for (size_t i = 0; i < numTables; ++i) {
+            size_t nameLen;
+            if (!file.read(reinterpret_cast<char*>(&nameLen), sizeof(nameLen))) {
+                cerr << "Error: Failed to read table name length from metadata.\n";
+                return;
+            }
+
+            string tableName(nameLen, ' ');
+            if (!file.read(&tableName[0], nameLen)) {
+                cerr << "Error: Failed to read table name from metadata.\n";
+                return;
+            }
+
+            tables[tableName] = make_unique<Table>(tableName);
+        }
+        file.close();
+    } catch (const std::exception& e) {
+        cerr << "Error occurred while loading metadata: " << e.what() << endl;
+    }
 }

@@ -1,42 +1,27 @@
-#include"Column.h"
+#include "Column.h"
 #include <iostream>
+
 using namespace std;
 
-<<<<<<< Updated upstream
-Column::Column(const string& name,const string& type, bool isprimarykey):name(name),type(type),isprimarykey(isprimarykey){}
-=======
-// Column::Column(const string& name,const string& type, bool isprimarykey):name(name),type(type),isprimarykey(isprimarykey){}
+Column::Column(const std::string& name, const std::string& type, bool isPrimaryKey)
+    : name(name), type(type), isPrimaryKey(isPrimaryKey) {}
 
-
-Column::Column(string name, string type, bool isprimarykey)
-    : name(name), type(type), isprimarykey(isprimarykey) {} // ✅ Correct field name
-string Column::getName()const
-{
+std::string Column::getName() const {
     return name;
 }
-bool Column::isPrimaryKey()const
-{
-    return isprimarykey;
-}
-string Column::getType()const
-{
+
+std::string Column::getType() const {
     return type;
 }
-// void Column::displayColumns() const
-// {
-//     cout<<"Column Name: "<<name<<" | Type:"<<type<<endl;
-//     if(isprimarykey)
-//     {
-//         cout<<" | Primary Key"<<endl;
-//     } 
-// }
->>>>>>> Stashed changes
 
-void Column::displayColumns() const
-{
-    cout<<"Column Name: "<<name<<" | Type:"<<type<<endl;
-    if(isprimarykey)
-    {
-        cout<<" | Primary Key"<<endl;
-    } 
+bool Column::isPrimaryKeyColumn() const {
+    return isPrimaryKey;
+}
+
+void Column::displayColumns() const {
+    cout << "Column Name: " << name << " | Type: " << type;
+    if (isPrimaryKey) {
+        cout << " | Primary Key";
+    }
+    cout << endl;
 }
