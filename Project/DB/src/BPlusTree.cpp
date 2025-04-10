@@ -179,3 +179,87 @@ void BPlusTree::insert_into_parent(int parent_offset, int new_key, int left_offs
         split_node(parent, parent_offset);
     }
 }
+
+
+
+
+// Add to BPlusTree.h
+std::vector<int> search(int key);
+std::vector<int> range_search(int start_key, int end_key);
+bool remove(int key);
+
+// Add to BPlusTree.cpp
+std::vector<int> BPlusTree::search(int key) {
+    std::vector<int> results;
+    int leaf_offset = find_leaf(key);
+    if (leaf_offset == -1) return results;
+    
+    BPlusNode leaf = read_node(leaf_offset);
+    for (int i = 0; i < leaf.key_count; i++) {
+        if (leaf.keys[i] == key) {
+            results.push_back(leaf.pointers[i + 1]);
+        }
+    }
+    
+    return results;
+}
+
+std::vector<int> BPlusTree::range_search(int start_key, int end_key) {
+    std::vector<int> results;
+    int leaf_offset = find_leaf(start_key);
+    if (leaf_offset == -1) return results;
+    
+    BPlusNode leaf = read_node(leaf_offset);
+    
+    while (leaf_offset != -1) {
+        for (int i = 0; i < leaf.key_count; i++) {
+            if (leaf.keys[i] >= start_key && leaf.keys[i] <= end_key) {
+                results.push_back(leaf.pointers[i + 1]);
+            }
+            if (leaf.keys[i] > end_key) {
+                return results;
+            }
+        }
+        
+        leaf_offset = leaf.next_leaf;
+        if (leaf_offset != -1) {
+            leaf = read_node(leaf_offset);
+        }
+    }
+    
+    return results;
+}
+
+bool BPlusTree::remove(int key) {
+    // This is complex for B+ Tree, implement a simplified version for now
+    // Full implementation would require merging nodes when underfilled
+    
+    int leaf_offset = find_leaf(key);
+    if (leaf_offset == -1) return false;
+    
+    BPlusNode leaf = read_node(leaf_offset);
+    int key_pos = -1;
+    
+    for (int i = 0; i < leaf.key_count; i++) {
+        if (leaf.keys[i] == key) {
+            key_pos = i;
+            break;
+        }
+    }
+    
+    if (key_pos == -1) return false;
+    
+    // Remove key by shifting remaining keys
+    for (int i = key_pos; i < leaf.key_count - 1; i++) {
+        leaf.keys[i] = leaf.keys[i + 1];
+        leaf.pointers[i + 1] = leaf.pointers[i + 2];
+    }
+    
+    leaf.key_count--;
+    write_node(leaf_offset, leaf);
+    
+    // Note: This simple implementation doesn't handle underflow
+    // Complete implementation would need to handle node merging
+    
+    return true;
+}

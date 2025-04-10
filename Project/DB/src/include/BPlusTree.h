@@ -42,6 +42,8 @@ public:
     void insert(int key, int data_offset);
     std::vector<int> search(int key);
     bool remove(int key);
+    std::vector<int> range_search(int start_key, int end_key);
+
 };
 
 #endif
