@@ -1,0 +1,35 @@
+# Compiled binary files
+*.out
+*.a
+*.lib
+*.so
+*.dll
+
+# Build directories
+/build/
+Debug/
+Release/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# IDE and editor files
+.vscode/
+*.suo
+*.user
+*.ncb
+*.sdf
+*.opensdf
+*.VC.db
+
+# CMake files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+
+
+# Logs and temp files
+*.log
+*.tmp
+
