@@ -240,8 +240,13 @@ void handleSearchRecords(DatabaseManager& dbManager, const string& currentDb) {
         cout << "Error: No database selected.\n";
         return;
     }
-
+    auto tables = dbManager.listTables();
+                        cout << "Tables in current database:\n";
+                        for (const auto& table : tables) {
+                            cout << " - " << table << "\n";
+                        }
     string tableName;
+    
     cout << "Enter Table Name: ";
     getline(cin, tableName);
 
@@ -358,6 +363,15 @@ int main() {
                     }
                     case 2: handleSwitchDatabase(dbManager, currentDb); break;
                     case 3: {
+                        auto dbs = dbManager.listDatabases();
+                        if (dbs.empty()) {
+                            std::cout << "No databases found.\n";
+                        } else {
+                            std::cout << "Databases:\n";
+                            for (const auto& db : dbs) {
+                                std::cout << " - " << db << "\n";
+                            }
+                        }
                         string dbName;
                         cout << "Enter Database Name to Delete: ";
                         getline(cin, dbName);
@@ -381,6 +395,11 @@ int main() {
                         break;
                     }
                     case 2: {
+                        auto tables = dbManager.listTables();
+                        cout << "Tables in current database:\n";
+                        for (const auto& table : tables) {
+                            cout << " - " << table << "\n";
+                        }
                         string tableName;
                         cout << "Enter Table Name: ";
                         getline(cin, tableName);
@@ -397,6 +416,11 @@ int main() {
                         break;
                     }
                     case 3: {
+                        auto tables = dbManager.listTables();
+                        cout << "Tables in current database:\n";
+                        for (const auto& table : tables) {
+                            cout << " - " << table << "\n";
+                        }
                         string tableName;
                         cout << "Enter Table Name to Drop: ";
                         getline(cin, tableName);
@@ -418,6 +442,11 @@ int main() {
                     case 1: handleSearchRecords(dbManager, currentDb); break;
 
                     case 2: {
+                        auto tables = dbManager.listTables();
+                        cout << "Tables in current database:\n";
+                        for (const auto& table : tables) {
+                            cout << " - " << table << "\n";
+                        }
                         std::string tableName;
                         std::cout << "Enter Table Name to Display: ";
                         std::getline(std::cin, tableName);
@@ -426,6 +455,11 @@ int main() {
                     }
 
                     case 3: {
+                        auto tables = dbManager.listTables();
+                        cout << "Tables in current database:\n";
+                        for (const auto& table : tables) {
+                            cout << " - " << table << "\n";
+                        }
                         string tableName, columnName, value;
                         cout << "Enter Table Name: ";
                         getline(cin, tableName);
