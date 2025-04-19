@@ -93,6 +93,7 @@ void displayDataMenu(int selected) {
 
 // Operation handlers
 void handleCreateDatabase(DatabaseManager& dbManager) {
+    
     string dbName;
     cout << "Enter Database Name: ";
     getline(cin, dbName);
@@ -106,6 +107,15 @@ void handleCreateDatabase(DatabaseManager& dbManager) {
 }
 
 void handleSwitchDatabase(DatabaseManager& dbManager, string& currentDb) {
+    auto dbs = dbManager.listDatabases();
+                        if (dbs.empty()) {
+                            std::cout << "No databases found.\n";
+                        } else {
+                            std::cout << "Databases:\n";
+                            for (const auto& db : dbs) {
+                                std::cout << " - " << db << "\n";
+                            }
+                        }
     string dbName;
     cout << "Enter Database Name: ";
     getline(cin, dbName);
@@ -196,6 +206,12 @@ void handleInsertRecord(DatabaseManager& dbManager, const string& currentDb) {
         cout << "Error: No database selected.\n";
         return;
     }
+    
+    auto tables = dbManager.listTables();
+    cout << "Tables in current database:\n";
+    for (const auto& table : tables) {
+        cout << " - " << table << "\n";
+    }
 
     string tableName;
     cout << "Enter Table Name: ";
@@ -241,10 +257,10 @@ void handleSearchRecords(DatabaseManager& dbManager, const string& currentDb) {
         return;
     }
     auto tables = dbManager.listTables();
-                        cout << "Tables in current database:\n";
-                        for (const auto& table : tables) {
-                            cout << " - " << table << "\n";
-                        }
+    cout << "Tables in current database:\n";
+    for (const auto& table : tables) {
+        cout << " - " << table << "\n";
+    }
     string tableName;
     
     cout << "Enter Table Name: ";
@@ -256,6 +272,11 @@ void handleSearchRecords(DatabaseManager& dbManager, const string& currentDb) {
         return;
     }
 
+    std::vector<std::string> cols = dbManager.listTableColumns(tableName);
+    cout<<"Columns in Current Table\n";
+    for(auto it:cols){
+        cout << "-"<<it << "\n";
+    }
     string columnName;
     cout << "Enter Column Name to search: ";
     getline(cin, columnName);

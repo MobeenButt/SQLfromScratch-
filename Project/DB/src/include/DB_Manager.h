@@ -86,6 +86,7 @@ public:
     void deleteDatabase(const std::string &dbName);
     void switchDatabase(const std::string &dbName);
     std::vector<std::string> listDatabases();  // Change return type
+    std::vector<std::string> listTableColumns(const std::string& table_name) const;
     void displayCurrentDatabase(const std::string& dbName) const;
     void displayTable(const std::string& table_name);
     // std::vector<std::string> listDatabases();  // Change return type

@@ -507,6 +507,12 @@ std::vector<std::string> DatabaseManager::listTables() const
 {
     return catalog.listTables();
 }
+std::vector<std::string> DatabaseManager::listTableColumns(const std::string& table_name) const
+{
+    return catalog.listTableColumns(table_name);
+}
+
+
 
 Schema DatabaseManager::getTableSchema(const std::string &table_name) const
 {

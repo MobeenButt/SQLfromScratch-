@@ -62,7 +62,7 @@ struct Schema {
     Schema() = default;
     // Serialization for efficient binary storage
     void serialize(std::ostream& out) const;
-    void deserialize(std::istream& in);
+    void deserialize(std::ifstream& file);
 };
 
 /**
@@ -125,6 +125,8 @@ public:
     std::vector<std::string> listTables() const;
 
     void createMetadata(const std::string& dbName);
+
+    std::vector<std::string> listTableColumns(const std::string& table_name) const;
 
 private:
     std::unordered_map<std::string, Schema> tables; // Faster lookup than vector
