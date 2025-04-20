@@ -1,0 +1,3 @@
+Teacher 2 id int 0 name VARCHAR 0 ./data/TestDB5/Teacher.dat 0 
+Students 1 id int 0 ./data/TestDB5/Students.dat 0 
+employees4 2 id INT 4 name VARCHAR 20 ./data/TestDB5/employees4.dat 1 employees4_id.idx 

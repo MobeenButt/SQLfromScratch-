@@ -1,0 +1,3 @@
+test3 2 id INT 4 name VARCHAR 20 ./data/TestDB3/test3.dat 1 test3_id.idx 
+test 2 id INT 4 name VARCHAR 20 ./data/TestDB3/test.dat 1 test_id.idx 
+Users 2 id INT 4 name VARCHAR 50 ./data/TestDB3/Users.dat 0 

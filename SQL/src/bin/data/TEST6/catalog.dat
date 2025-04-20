@@ -1,0 +1,3 @@
+Student 2 student_id INT 50 student_name VARCHAR 100 ./data/TEST6/Student.dat 1 Student_student_id.idx 
+Course 2 course_id INT 50 course_name VARCHAR 100 ./data/TEST6/Course.dat 1 Course_course_id.idx 
+Teacher 2 id INT 4 name VARCHAR 50 ./data/TEST6/Teacher.dat 1 Teacher_id.idx 
