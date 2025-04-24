@@ -1,0 +1,7 @@
+CREATE DATABASE company_db;
+CREATE TABLE departments (id INT PRIMARY KEY, name VARCHAR(50));
+INSERT INTO departments VALUES (1, 'Engineering');
+INSERT INTO departments VALUES (2, 'Marketing');
+INSERT INTO departments VALUES (3, 'Sales');
+INSERT INTO departments VALUES (4, 'HR');
+INSERT INTO departments VALUES (5, 'Finance');

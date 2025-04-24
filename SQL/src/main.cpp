@@ -111,6 +111,37 @@ bool handleCreateTable(Database& db, const std::string& command) {
     return false;
 }
 
+void executeSelect(Database& db, const std::string& query) {
+    std::vector<std::string> tokens = split(query, ' ');
+    if (tokens.size() < 4) {
+        std::cout << "Invalid SELECT syntax\n";
+        return;
+    }
+
+    std::string table_name = tokens[3];
+    
+    if (tokens.size() >= 8 && tokens[4] == "WHERE") {
+        // SELECT with condition
+        std::string column_name = tokens[5];
+        std::string op = tokens[6];
+        std::string value = tokens[7];
+        
+        std::vector<Record> results;
+        if (db.selectWithCondition(table_name, column_name, op, value, results)) {
+            // Results are already displayed in the select method
+        } else {
+            std::cout << "Error executing SELECT query\n";
+        }
+    }
+    else if (tokens.size() == 4) {
+        // Simple SELECT *
+        db.select(table_name);  // Results are displayed inside the method
+    }
+    else {
+        std::cout << "Invalid SELECT syntax\n";
+    }
+}
+
 int main() {
     std::string input;
     Database* current_db = nullptr;
@@ -295,35 +326,7 @@ int main() {
                     continue;
                 }
                 
-                std::string asterisk, from, table_name, where, condition;
-                iss >> asterisk >> from >> table_name;
-                
-                if (asterisk != "*" || from != "FROM") {
-                    std::cout << "Error: Invalid syntax. Use 'SELECT * FROM table [WHERE condition]'\n";
-                    continue;
-                }
-                
-                // Check for WHERE clause
-                iss >> where;
-                if (where == "WHERE") {
-                    std::getline(iss, condition);
-                    condition = condition.substr(condition.find_first_not_of(" \t"));
-                }
-                
-                auto results = current_db->select(table_name, condition);
-                
-                if (results.empty()) {
-                    std::cout << "No records found\n";
-                } else {
-                    // Print results
-                    for (const auto& record : results) {
-                        for (size_t i = 0; i < record.values.size(); i++) {
-                            std::cout << record.values[i];
-                            if (i < record.values.size() - 1) std::cout << ", ";
-                        }
-                        std::cout << std::endl;
-                    }
-                }
+                executeSelect(*current_db, input);
             }
             else if (command == "UPDATE") {
                 if (!current_db) {

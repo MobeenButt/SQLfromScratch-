@@ -1,0 +1,13 @@
+1
+departments
+2
+id
+INT
+4
+1
+0
+name
+VARCHAR(50)
+0
+0
+0

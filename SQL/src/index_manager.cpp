@@ -239,16 +239,15 @@ bool IndexManager::search(const std::string& index_file,
                         int value,
                         std::vector<int>& result) {
     try {
-        std::string full_path = "./data/" + index_file;
         std::vector<IndexRecord> records;
-        result.clear();  // Clear any existing results
+        result.clear();
         
-        if (!readIndexRecords(full_path, records)) {
-            std::cerr << "Failed to read index records" << std::endl;
+        if (!readIndexRecords(index_file, records)) {
+            std::cerr << "Failed to read index records from: " << index_file << std::endl;
             return false;
         }
 
-        std::cout << "Found " << records.size() << " records in index\n";
+        std::cout << "Found " << records.size() << " records in index" << std::endl;
 
         // Sort records for efficient searching
         sortIndexRecords(records);
@@ -268,7 +267,7 @@ bool IndexManager::search(const std::string& index_file,
             searchNotEqual(records, value, result);
         }
 
-        std::cout << "Found " << result.size() << " matching records\n";
+        std::cout << "Found " << result.size() << " matching records" << std::endl;
     return true;
     } catch (const std::exception& e) {
         std::cerr << "Error in index search: " << e.what() << std::endl;
