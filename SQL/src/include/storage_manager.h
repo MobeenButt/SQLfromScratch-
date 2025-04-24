@@ -133,6 +133,11 @@ public:
     std::string getTablePath(const std::string& db_name, const std::string& table_name) const;
     std::string getIndexPath(const std::string& db_name, const std::string& index_name) const;
 
+    bool getRecord(const std::string& db_name,
+                  const std::string& table_name,
+                  int key,
+                  Record& record);
+
 private:
     std::string data_directory;
     bool createFile(const std::string& filename);

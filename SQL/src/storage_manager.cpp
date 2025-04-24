@@ -30,7 +30,7 @@ bool StorageManager::createDatabase(const std::string& db_name) {
 }
 
 std::string StorageManager::getTablePath(const std::string& db_name, const std::string& table_name) const {
-    return "data/" + db_name + "/" + table_name + ".dat";
+    return "./data/" + db_name + "/" + table_name + ".dat";
 }
 
 std::string StorageManager::getIndexPath(const std::string& db_name, const std::string& index_name) const {
@@ -259,16 +259,27 @@ bool StorageManager::getRecord(const std::string& db_name,
                              Record& record) {
     try {
         std::string filename = getTablePath(db_name, table_name);
+        std::cout << "Getting record with key " << key << " from " << filename << std::endl;
+
         std::vector<Record> all_records = getAllRecords(filename);
         
         // Find record with matching key (assuming first column is key)
         for (const auto& r : all_records) {
-            if (!r.values.empty() && std::stoi(r.values[0]) == key) {
-                record = r;
-                return true;
+            if (!r.values.empty()) {
+                try {
+                    if (std::stoi(r.values[0]) == key) {
+                        record = r;
+                        std::cout << "Found record with key " << key << std::endl;
+                        return true;
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "Error converting key value: " << e.what() << std::endl;
+                    continue;
+                }
             }
         }
         
+        std::cout << "Record with key " << key << " not found" << std::endl;
         return false;
     } catch (const std::exception& e) {
         std::cerr << "Error getting record: " << e.what() << std::endl;

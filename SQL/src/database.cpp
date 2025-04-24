@@ -182,11 +182,45 @@ bool Database::insert(const std::string& table_name,
     return true;
 }
 
-bool Database::select(const std::string& table_name,
-                     const std::string& column_name,
-                     const std::string& op,
-                     const std::string& value,
-                     std::vector<Record>& result) {
+// Simple select without conditions
+std::vector<Record> Database::select(const std::string& table_name,
+                                   const std::string& where_clause) {
+    std::vector<Record> result;
+    if (where_clause.empty()) {
+        // Simple SELECT * case
+        result = storage_manager->getAllRecords(db_name + "/" + table_name);
+        
+        // Display results
+    TableInfo* table = catalog_manager->getTableInfo(table_name);
+        if (table) {
+            std::cout << "\nQuery Results (" << result.size() << " records):\n";
+            std::cout << "----------------------------------------\n";
+            
+            // Print header
+            for (const auto& col : table->columns) {
+                std::cout << std::setw(15) << std::left << col.name;
+            }
+            std::cout << "\n----------------------------------------\n";
+
+            // Print records
+            for (const auto& record : result) {
+                for (const auto& value : record.values) {
+                    std::cout << std::setw(15) << std::left << value;
+                }
+                std::cout << "\n";
+            }
+            std::cout << "----------------------------------------\n";
+        }
+    }
+    return result;
+}
+
+// Select with conditions
+bool Database::selectWithCondition(const std::string& table_name,
+                                 const std::string& column_name,
+                                 const std::string& op,
+                                 const std::string& value,
+                                 std::vector<Record>& result) {
     try {
         TableInfo* table = catalog_manager->getTableInfo(table_name);
         if (!table) {
@@ -277,6 +311,11 @@ std::vector<std::string> readRecord(const char* data, const std::vector<ColumnIn
 bool Database::update(const std::string& table_name, 
                      const std::string& set_clause,
                      const std::string& where_clause) {
+    std::vector<Record> records_to_update;
+    if (!selectWithCondition(table_name, "id", "=", where_clause, records_to_update)) {
+        return false;
+    }
+
     TableInfo* table = catalog_manager->getTableInfo(table_name);
     if (!table) {
         return false;
@@ -311,10 +350,6 @@ bool Database::update(const std::string& table_name,
     }
 
     if (update_col_idx == -1) return false;
-
-    // Find records to update using where clause
-    auto records_to_update = select(table_name, where_clause);
-    if (records_to_update.empty()) return false;
 
     // Update records
     Page page;
@@ -368,14 +403,15 @@ bool Database::update(const std::string& table_name,
 
 bool Database::remove(const std::string& table_name, 
                      const std::string& where_clause) {
+    std::vector<Record> records_to_delete;
+    if (!selectWithCondition(table_name, "id", "=", where_clause, records_to_delete)) {
+        return false;
+    }
+
     TableInfo* table = catalog_manager->getTableInfo(table_name);
     if (!table) {
         return false;
     }
-
-    // Find records to delete
-    auto records_to_delete = select(table_name, where_clause);
-    if (records_to_delete.empty()) return true; // Nothing to delete
 
     Page page;
     int page_id = 0;
@@ -451,4 +487,97 @@ void removeRecord(Page& page, size_t offset, size_t record_size) {
            record_size);
     
     page.setNumKeys(page.getNumKeys() - 1);
+}
+
+bool Database::selectUsingIndex(const std::string& table_name,
+                              const std::string& index_file,
+                              const std::string& op,
+                              const std::string& value,
+                              std::vector<Record>& result) {
+    try {
+        // Add ./data/ prefix to index file path
+        std::string full_index_path = "./data/" + index_file;
+        std::cout << "Using index file: " << full_index_path << std::endl;
+
+        std::vector<int> matching_keys;
+        if (!index_manager->search(full_index_path, op, std::stoi(value), matching_keys)) {
+            std::cerr << "Index search failed" << std::endl;
+            return false;
+        }
+
+        std::cout << "Found " << matching_keys.size() << " matching keys" << std::endl;
+
+        // Retrieve records for matching keys
+        for (int key : matching_keys) {
+            Record record;
+            if (storage_manager->getRecord(db_name, table_name, key, record)) {
+                result.push_back(record);
+                std::cout << "Added record with key " << key << " to results" << std::endl;
+            }
+        }
+
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Error in index search: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+bool Database::selectUsingTableScan(const std::string& table_name,
+                                  int col_index,
+                                  const std::string& op,
+                                  const std::string& value,
+                                  std::vector<Record>& result) {
+    try {
+        std::string data_file = getTablePath(table_name);
+        std::cout << "Performing table scan on: " << data_file << std::endl;
+
+        std::vector<Record> all_records = storage_manager->getAllRecords(data_file);
+        
+        for (const Record& record : all_records) {
+            if (col_index >= 0 && col_index < static_cast<int>(record.values.size())) {
+                if (compareValues(record.values[col_index], value, op)) {
+                    result.push_back(record);
+                }
+            }
+        }
+
+        std::cout << "Found " << result.size() << " matching records" << std::endl;
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Error in table scan: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+bool Database::compareValues(const std::string& record_value,
+                           const std::string& search_value,
+                           const std::string& op) {
+    try {
+        // Try numeric comparison first
+        int record_num = std::stoi(record_value);
+        int search_num = std::stoi(search_value);
+
+        if (op == "=") return record_num == search_num;
+        if (op == ">") return record_num > search_num;
+        if (op == "<") return record_num < search_num;
+        if (op == ">=") return record_num >= search_num;
+        if (op == "<=") return record_num <= search_num;
+        if (op == "!=") return record_num != search_num;
+    } catch (...) {
+        // Fall back to string comparison
+        if (op == "=") return record_value == search_value;
+        if (op == ">") return record_value > search_value;
+        if (op == "<") return record_value < search_value;
+        if (op == ">=") return record_value >= search_value;
+        if (op == "<=") return record_value <= search_value;
+        if (op == "!=") return record_value != search_value;
+    }
+
+    return false;
+}
+
+// Helper method to get the full table path
+std::string Database::getTablePath(const std::string& table_name) {
+    return "./data/" + db_name + "/" + table_name + ".dat";
 } 
