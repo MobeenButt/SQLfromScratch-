@@ -15,14 +15,18 @@ public:
     IndexManager(StorageManager* storage_manager);
     ~IndexManager();
 
-    bool createIndex(const std::string& table_name, 
-                    const std::string& column_name,
-                    TableInfo* table_info);
+    bool createIndex(const std::string& db_name,
+                    const std::string& table_name,
+                    const std::string& column_name);
     bool dropIndex(const std::string& table_name, 
                   const std::string& column_name);
-    bool insertEntry(const std::string& index_name, int key, int page_id);
-    int searchEntry(const std::string& index_name, int key);
-    bool exists(const std::string& index_name, int key);
+    bool insert(const std::string& index_file, int key, const Record& record);
+    bool exists(const std::string& index_file, int key);
+    std::vector<Record> search(const std::string& index_file, int key);
+    bool search(const std::string& index_file,
+                const std::string& op,
+                int value,
+                std::vector<int>& result);
 
 private:
     StorageManager* storage_manager;
@@ -31,4 +35,21 @@ private:
     bool writeIndexRecord(const std::string& index_name, const IndexRecord& record);
     bool readIndexRecords(const std::string& index_name, std::vector<IndexRecord>& records);
     void sortIndexRecords(std::vector<IndexRecord>& records);
+    void searchEqual(const std::vector<IndexRecord>& records,
+                    int value,
+                    std::vector<int>& result);
+    
+    void searchGreaterThan(const std::vector<IndexRecord>& records,
+                          int value,
+                          std::vector<int>& result,
+                          bool include_equal);
+    
+    void searchLessThan(const std::vector<IndexRecord>& records,
+                       int value,
+                       std::vector<int>& result,
+                       bool include_equal);
+    
+    void searchNotEqual(const std::vector<IndexRecord>& records,
+                       int value,
+                       std::vector<int>& result);
 }; 

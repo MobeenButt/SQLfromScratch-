@@ -3,6 +3,7 @@
 #include <sstream>
 #include <algorithm>
 #include <cstring>  // for memset
+#include <unordered_set>
 #include "page.h"
 #include "catalog_manager.h" // Add include for CatalogManager
 
@@ -10,11 +11,22 @@
 std::vector<std::string> readRecord(const char* data, const std::vector<ColumnInfo>& columns);
 
 Database::Database(const std::string& name) : db_name(name) {
-    storage_manager = new StorageManager("./data");
+    try {
+        storage_manager = new StorageManager();
+        catalog_manager = new CatalogManager(name);
+        index_manager = new IndexManager(storage_manager);
+        
+        // Create database directory if it doesn't exist
     storage_manager->createDatabase(name);
     
-    catalog_manager = new CatalogManager(name);
-    index_manager = new IndexManager(storage_manager);
+        // Load the catalog
+        reloadCatalog();
+        
+        std::cout << "Database initialized: " << name << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Error initializing database: " << e.what() << std::endl;
+        throw;
+    }
 }
 
 Database::~Database() {
@@ -23,10 +35,36 @@ Database::~Database() {
     delete index_manager;
 }
 
+void Database::reloadCatalog() {
+    try {
+        // Force reload of catalog
+        delete catalog_manager;
+        catalog_manager = new CatalogManager(db_name);
+        std::cout << "Catalog reloaded for database: " << db_name << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Error reloading catalog: " << e.what() << std::endl;
+        throw;
+    }
+}
+
 bool Database::createTable(const std::string& table_name, 
                          const std::vector<ColumnInfo>& columns) {
     if (!storage_manager->createTable(db_name, table_name)) {
         return false;
+    }
+
+    // Create indexes for primary and foreign keys
+    for (const auto& col : columns) {
+        if (col.is_primary_key) {
+            if (!index_manager->createIndex(db_name, table_name, col.name)) {
+                return false;
+            }
+        }
+        if (col.is_foreign_key) {
+            if (!index_manager->createIndex(db_name, table_name, col.name)) {
+                return false;
+            }
+        }
     }
 
     return catalog_manager->createTable(table_name, columns);
@@ -34,80 +72,53 @@ bool Database::createTable(const std::string& table_name,
 
 bool Database::dropTable(const std::string& table_name) {
     TableInfo* table = catalog_manager->getTableInfo(table_name);
-    if (!table) {
+    if (!table) return false;
+
+    // Drop the table file
+    if (!storage_manager->dropTable(db_name, table_name)) {
         return false;
     }
 
-    // Drop all indexes
+    // Drop associated indexes
     for (const auto& index_file : table->index_files) {
-        // Extract column name from index file name
-        std::string column_name = index_file.substr(
-            table_name.length() + 1,
-            index_file.length() - table_name.length() - 5
-        );
-        index_manager->dropIndex(table_name, column_name);
+        storage_manager->dropTable(db_name, index_file);
     }
 
-    // Remove the table's data file
-    storage_manager->dropTable(db_name, table_name);
     return catalog_manager->dropTable(table_name);
 }
 
-bool Database::createIndex(const std::string& table_name, const std::string& column_name) {
+bool Database::createIndex(const std::string& table_name, 
+                         const std::string& column_name) {
     TableInfo* table = catalog_manager->getTableInfo(table_name);
     if (!table) {
         std::cerr << "Table not found: " << table_name << std::endl;
         return false;
     }
 
-    // Verify column exists and is of indexable type
-    bool found = false;
+    // Check if column exists
+    bool column_found = false;
     for (const auto& col : table->columns) {
-        if (col.name == column_name && col.type == "INT") {
-            found = true;
+        if (col.name == column_name) {
+            column_found = true;
             break;
         }
     }
-    if (!found) {
-        std::cerr << "Column not found or not indexable: " << column_name << std::endl;
+
+    if (!column_found) {
+        std::cerr << "Column not found: " << column_name << std::endl;
         return false;
     }
 
-    // Check if index already exists
-    std::string index_name = table_name + "_" + column_name + ".idx";
-    if (std::find(table->index_files.begin(), 
-                  table->index_files.end(), 
-                  index_name) != table->index_files.end()) {
-        std::cerr << "Index already exists" << std::endl;
+    // Create the index
+    if (!index_manager->createIndex(db_name, table_name, column_name)) {
+        std::cerr << "Failed to create index" << std::endl;
         return false;
     }
 
-    std::cout << "Creating index file in database: " << db_name << std::endl;
-    
-    // First create the index file
-    if (!storage_manager->createTable(db_name, index_name)) {
-        std::cerr << "Failed to create index file" << std::endl;
-        return false;
-    }
+    // Add index file to table info
+    std::string index_file = table_name + "_" + column_name + ".idx";
+    table->index_files.push_back(index_file);
 
-    // Then add index to catalog
-    if (!catalog_manager->addIndex(table_name, column_name)) {
-        std::cerr << "Failed to add index to catalog" << std::endl;
-        // Cleanup the created file
-        storage_manager->dropTable(db_name, index_name);
-        return false;
-    }
-
-    // Finally build the index
-    if (!index_manager->createIndex(table_name, column_name, table)) {
-        std::cerr << "Failed to build index" << std::endl;
-        // Rollback changes
-        catalog_manager->removeIndex(table_name, column_name);
-        storage_manager->dropTable(db_name, index_name);
-        return false;
-    }
-
-    std::cout << "Successfully created index on " << table_name << "(" << column_name << ")" << std::endl;
     return true;
 }
 
@@ -115,110 +126,55 @@ bool Database::insert(const std::string& table_name,
                      const std::vector<std::string>& values) {
     TableInfo* table = catalog_manager->getTableInfo(table_name);
     if (!table || values.size() != table->columns.size()) {
+        std::cerr << "Invalid table or number of values" << std::endl;
         return false;
     }
 
-    // Check for duplicates using indexes
+    // Check and update indexes
     for (size_t i = 0; i < table->columns.size(); i++) {
         const ColumnInfo& col = table->columns[i];
-        if (col.type == "INT") {
-            std::string index_name = table_name + "_" + col.name + ".idx";
-            if (std::find(table->index_files.begin(), 
-                         table->index_files.end(), 
-                         index_name) != table->index_files.end()) {
-                try {
-                    int key = std::stoi(values[i]);
-                    if (index_manager->exists(index_name, key)) {
-                        return false; // Duplicate found
-                    }
-                } catch (...) {
-                    continue;
+        if (col.is_primary_key) {
+            try {
+                int key = std::stoi(values[i]);
+                std::string index_file = db_name + "/" + table_name + "_" + col.name + ".idx";
+                std::cout << "Checking primary key constraint in: " << index_file << std::endl;
+                
+                if (index_manager->exists(index_file, key)) {
+                    std::cerr << "Error: Duplicate primary key value: " << key << std::endl;
+                    return false;
                 }
+            } catch (...) {
+                std::cerr << "Error: Invalid primary key value" << std::endl;
+                return false;
             }
         }
     }
 
-    // Calculate record size
-    size_t record_size = 0;
-    for (const auto& col : table->columns) {
-        if (col.type == "INT") {
-            record_size += sizeof(int);
-        } else if (col.type == "VARCHAR") {
-            record_size += col.size;
-        }
-    }
-
-    // Create record
-    std::vector<char> record_data(record_size);
-    size_t offset = 0;
-    
-    try {
-        for (size_t i = 0; i < values.size(); i++) {
-            const ColumnInfo& col = table->columns[i];
-            std::string value = values[i];
-            
-            if (col.type == "INT") {
-                int int_val = std::stoi(value);
-                memcpy(record_data.data() + offset, &int_val, sizeof(int));
-                offset += sizeof(int);
-            }
-            else if (col.type == "VARCHAR") {
-                if (value.length() > static_cast<size_t>(col.size)) {
-                    return false; // String too long
-                }
-                memcpy(record_data.data() + offset, value.c_str(), value.length());
-                memset(record_data.data() + offset + value.length(), 0, col.size - value.length());
-                offset += col.size;
-            }
-        }
-    } catch (const std::exception& e) {
-        return false; // Value conversion failed
-    }
-
-    // Find or create page with enough space
-    Page page;
-    int page_id = 0;
-    bool found_space = false;
-
-    while (storage_manager->readPage(table->data_file, page_id, page)) {
-        if (page.free_space >= static_cast<int>(record_size)) {
-            found_space = true;
-            break;
-        }
-        page_id++;
-    }
-
-    if (!found_space) {
-        page = Page();
-        page.free_space = PAGE_SIZE;
-    }
-
-    // Write record
-    size_t write_offset = PAGE_SIZE - page.free_space;
-    memcpy(page.data + write_offset, record_data.data(), record_size);
-    page.free_space -= record_size;
-
-    if (!storage_manager->writePage(table->data_file, page_id, page)) {
+    // Insert the record
+    Record record;
+    record.values = values;
+    if (!storage_manager->insertRecord(db_name, table_name, record)) {
+        std::cerr << "Failed to insert record into table" << std::endl;
         return false;
     }
 
-    // Update indexes
+    // Update all relevant indexes
     for (size_t i = 0; i < table->columns.size(); i++) {
         const ColumnInfo& col = table->columns[i];
-        if (col.type == "INT") {
-            std::string index_name = table_name + "_" + col.name + ".idx";
-            if (std::find(table->index_files.begin(), 
-                         table->index_files.end(), 
-                         index_name) != table->index_files.end()) {
-                try {
-                    int key = std::stoi(values[i]);
-                    if (!index_manager->insertEntry(index_name, key, page_id)) {
-                        // Index update failed - should implement rollback
-                        return false;
-                    }
-                } catch (...) {
-                    continue;
+        if (col.is_primary_key) {
+            try {
+                int key = std::stoi(values[i]);
+                std::string index_file = db_name + "/" + table_name + "_" + col.name + ".idx";
+                std::cout << "Updating index: " << index_file << std::endl;
+                
+                if (!index_manager->insert(index_file, key, record)) {
+                    std::cerr << "Failed to update index: " << index_file << std::endl;
+                    // You might want to roll back the record insertion here
+                    return false;
                 }
+            } catch (const std::exception& e) {
+                std::cerr << "Error updating index: " << e.what() << std::endl;
+                    return false;
             }
         }
     }
@@ -226,124 +182,73 @@ bool Database::insert(const std::string& table_name,
     return true;
 }
 
-std::vector<std::vector<std::string>> Database::select(
-    const std::string& table_name, 
-    const std::string& condition) {
-    
-    std::vector<std::vector<std::string>> results;
-    TableInfo* table = catalog_manager->getTableInfo(table_name);
-    if (!table) {
-        std::cerr << "Table not found: " << table_name << std::endl;
-        return results;
-    }
-
-    // Calculate record size
-    size_t record_size = 0;
-    for (const auto& col : table->columns) {
-        if (col.type == "INT") {
-            record_size += sizeof(int);
-        } else if (col.type == "VARCHAR") {
-            record_size += col.size;
+bool Database::select(const std::string& table_name,
+                     const std::string& column_name,
+                     const std::string& op,
+                     const std::string& value,
+                     std::vector<Record>& result) {
+    try {
+        TableInfo* table = catalog_manager->getTableInfo(table_name);
+        if (!table) {
+            std::cerr << "Table not found: " << table_name << std::endl;
+            return false;
         }
-    }
 
-    if (record_size == 0) {
-        std::cerr << "Invalid record size" << std::endl;
-        return results;
-    }
-
-    // Parse condition if it exists
-    std::string col_name, op, value;
-    if (!condition.empty()) {
-        std::istringstream iss(condition);
-        iss >> col_name >> op >> value;
-    }
-
-    // Find column index for condition
-    int col_idx = -1;
-    std::string col_type;
-    if (!condition.empty()) {
+        // Find the column index and type
+        int col_index = -1;
         for (size_t i = 0; i < table->columns.size(); i++) {
-            if (table->columns[i].name == col_name) {
-                col_idx = i;
-                col_type = table->columns[i].type;
+            if (table->columns[i].name == column_name) {
+                col_index = i;
                 break;
             }
         }
-    }
 
-    // Full table scan
-    Page page;
-    int page_id = 0;
-
-    std::cout << "Scanning table: " << table_name << std::endl;
-    
-    // Read first page to check if file exists and has data
-    if (!storage_manager->readPage(table->data_file, 0, page)) {
-        std::cout << "No data found in table" << std::endl;
-        return results;
-    }
-
-    do {
-        // If page is completely empty, we've reached the end of data
-        if (page.free_space == PAGE_SIZE) {
-            break;
+        if (col_index == -1) {
+            std::cerr << "Column not found: " << column_name << std::endl;
+            return false;
         }
 
-        size_t used_space = PAGE_SIZE - page.free_space;
-        size_t num_records = used_space / record_size;
+        result.clear();  // Clear any existing results
 
-        // Process records in this page
-        for (size_t i = 0; i < num_records; i++) {
-            const char* record_start = page.data + (i * record_size);
-            std::vector<std::string> record = readRecord(record_start, table->columns);
+        // Check if we can use an index for this query
+        bool has_index = table->columns[col_index].is_primary_key;
+        std::string index_file = db_name + "/" + table_name + "_" + column_name + ".idx";
+
+        bool success;
+        if (has_index) {
+            std::cout << "Using index for search on " << column_name << std::endl;
+            success = selectUsingIndex(table_name, index_file, op, value, result);
+        } else {
+            std::cout << "Performing full table scan on " << table_name << std::endl;
+            success = selectUsingTableScan(table_name, col_index, op, value, result);
+        }
+
+        // Display results
+        if (success) {
+            std::cout << "\nQuery Results (" << result.size() << " records):\n";
+            std::cout << "----------------------------------------\n";
             
-            // If no condition, add all records
-            bool matches = condition.empty();
-            
-            // If there is a condition, check if record matches
-            if (!matches && col_idx != -1) {
-                const std::string& field_value = record[col_idx];
-                if (col_type == "INT") {
-                    try {
-                        int record_val = std::stoi(field_value);
-                        int cond_val = std::stoi(value);
-                        if (op == "=") matches = (record_val == cond_val);
-                        else if (op == ">") matches = (record_val > cond_val);
-                        else if (op == "<") matches = (record_val < cond_val);
-                    } catch (...) {
-                        continue;
-                    }
-                } else if (op == "=" && field_value == value) {
-                    matches = true;
+            // Print header
+            for (const auto& col : table->columns) {
+                std::cout << std::setw(15) << std::left << col.name;
+            }
+            std::cout << "\n----------------------------------------\n";
+
+            // Print records
+            for (const auto& record : result) {
+                for (const auto& value : record.values) {
+                    std::cout << std::setw(15) << std::left << value;
                 }
+                std::cout << "\n";
             }
-            
-            if (matches) {
-                results.push_back(record);
-            }
+            std::cout << "----------------------------------------\n";
         }
 
-        page_id++;
-    } while (storage_manager->readPage(table->data_file, page_id, page));
-
-    // Print results
-    if (results.empty()) {
-        std::cout << "No records found" << std::endl;
-    } else {
-        for (const auto& record : results) {
-            for (size_t i = 0; i < record.size(); i++) {
-                std::cout << record[i];
-                if (i < record.size() - 1) {
-                    std::cout << ", ";
-                }
-            }
-            std::cout << std::endl;
-        }
-        std::cout << results.size() << " record(s) found" << std::endl;
+        return success;
+    } catch (const std::exception& e) {
+        std::cerr << "Error in select: " << e.what() << std::endl;
+        return false;
     }
-
-    return results;
 }
 
 // Helper method to read a record
@@ -420,49 +325,33 @@ bool Database::update(const std::string& table_name,
         bool page_modified = false;
         size_t offset = 0;
 
-        while (offset < static_cast<size_t>(PAGE_SIZE - page.free_space)) {
-            std::vector<std::string> current_record;
-            const char* ptr = page.data + offset;
-            size_t record_size = 0;
-
-            // Extract current record
-            for (const auto& col : table->columns) {
-                if (col.type == "INT") {
-                    int val = *reinterpret_cast<const int*>(ptr);
-                    current_record.push_back(std::to_string(val));
-                    record_size += sizeof(int);
-                }
-                else if (col.type == "VARCHAR") {
-                    std::string str(ptr, col.size);
-                    str.erase(std::find(str.begin(), str.end(), '\0'), str.end());
-                    current_record.push_back(str);
-                    record_size += col.size;
-                }
-            }
+        while (offset < static_cast<size_t>(PAGE_SIZE_BYTES - page.getFreeSpace())) {
+            Record current_record;
+            page.readData(offset, &current_record, sizeof(Record));
 
             // Check if this record matches any record to update
             for (const auto& record : records_to_update) {
-                if (record == current_record) {
+                if (record.values == current_record.values) {
                     // Update the record
+                    Record updated_record;
+                    updated_record.values = record.values;
                     if (table->columns[update_col_idx].type == "INT") {
                         int new_val = std::stoi(new_value);
-                        memcpy(page.data + offset + record_size, 
-                               &new_val, sizeof(int));
+                        updated_record.values[update_col_idx] = std::to_string(new_val);
                     }
                     else if (table->columns[update_col_idx].type == "VARCHAR") {
                         std::string padded_value = new_value;
                         padded_value.append(
                             table->columns[update_col_idx].size - new_value.length(), 
                             '\0');
-                        memcpy(page.data + offset + record_size,
-                               padded_value.c_str(),
-                               table->columns[update_col_idx].size);
+                        updated_record.values[update_col_idx] = padded_value;
                     }
+                    page.writeData(offset, &updated_record, sizeof(Record));
                     page_modified = true;
                 }
             }
 
-            offset += record_size;
+            offset += sizeof(Record);
         }
 
         if (page_modified) {
@@ -478,14 +367,14 @@ bool Database::update(const std::string& table_name,
 }
 
 bool Database::remove(const std::string& table_name, 
-                     const std::string& condition) {
+                     const std::string& where_clause) {
     TableInfo* table = catalog_manager->getTableInfo(table_name);
     if (!table) {
         return false;
     }
 
     // Find records to delete
-    auto records_to_delete = select(table_name, condition);
+    auto records_to_delete = select(table_name, where_clause);
     if (records_to_delete.empty()) return true; // Nothing to delete
 
     Page page;
@@ -497,30 +386,14 @@ bool Database::remove(const std::string& table_name,
         size_t read_offset = 0;
         size_t write_offset = 0;
 
-        while (read_offset < static_cast<size_t>(PAGE_SIZE - page.free_space)) {
-            std::vector<std::string> current_record;
-            const char* ptr = page.data + read_offset;
-            size_t record_size = 0;
-
-            // Extract current record
-            for (const auto& col : table->columns) {
-                if (col.type == "INT") {
-                    int val = *reinterpret_cast<const int*>(ptr);
-                    current_record.push_back(std::to_string(val));
-                    record_size += sizeof(int);
-                }
-                else if (col.type == "VARCHAR") {
-                    std::string str(ptr, col.size);
-                    str.erase(std::find(str.begin(), str.end(), '\0'), str.end());
-                    current_record.push_back(str);
-                    record_size += col.size;
-                }
-            }
+        while (read_offset < static_cast<size_t>(PAGE_SIZE_BYTES - page.getFreeSpace())) {
+            Record current_record;
+            page.readData(read_offset, &current_record, sizeof(Record));
 
             // Check if this record should be deleted
             bool should_delete = false;
             for (const auto& record : records_to_delete) {
-                if (record == current_record) {
+                if (record.values == current_record.values) {
                     should_delete = true;
                     break;
                 }
@@ -529,26 +402,24 @@ bool Database::remove(const std::string& table_name,
             if (!should_delete) {
                 // Keep this record by moving it to write_offset if necessary
                 if (write_offset != read_offset) {
-                    memmove(page.data + write_offset, 
-                           page.data + read_offset, 
-                           record_size);
+                    page.moveData(write_offset, read_offset, sizeof(Record));
                     page_modified = true;
                 }
-                write_offset += record_size;
+                write_offset += sizeof(Record);
             } else {
                 page_modified = true;
             }
 
-            read_offset += record_size;
+            read_offset += sizeof(Record);
         }
 
         if (page_modified) {
             // Update free space
-            page.free_space = PAGE_SIZE - write_offset;
+            page.setFreeSpace(PAGE_SIZE_BYTES - write_offset);
             
             // Clear the rest of the page
-            if (write_offset < PAGE_SIZE) {
-                memset(page.data + write_offset, 0, PAGE_SIZE - write_offset);
+            if (write_offset < PAGE_SIZE_BYTES) {
+                memset(page.getData() + write_offset, 0, PAGE_SIZE_BYTES - write_offset);
             }
 
             if (!storage_manager->writePage(table->data_file, page_id, page)) {
@@ -560,4 +431,24 @@ bool Database::remove(const std::string& table_name,
     }
 
     return success;
+}
+
+void updateRecord(Page& page, size_t offset, const Record& new_record) {
+    size_t record_size = sizeof(Record);
+    page.writeData(offset, &new_record, record_size);
+    page.setNumKeys(page.getNumKeys() + 1);
+}
+
+void removeRecord(Page& page, size_t offset, size_t record_size) {
+    size_t remaining = page.getFreeSpace() - (offset + record_size);
+    if (remaining > 0) {
+        page.moveData(offset, offset + record_size, remaining);
+    }
+    
+    page.setFreeSpace(page.getFreeSpace() + record_size);
+    memset(page.getData() + (PAGE_SIZE_BYTES - page.getFreeSpace()), 
+           0, 
+           record_size);
+    
+    page.setNumKeys(page.getNumKeys() - 1);
 } 

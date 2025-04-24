@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <fstream>
 #include "database.h"
+#include <regex>
 
 void printHelp() {
     std::cout << "Available commands:\n"
@@ -40,29 +41,74 @@ std::vector<std::string> split(const std::string& str, char delimiter) {
 // Helper function to parse column definitions
 std::vector<ColumnInfo> parseColumnDefs(const std::string& columnDefs) {
     std::vector<ColumnInfo> columns;
-    std::vector<std::string> columnTokens = split(columnDefs, ',');
+    std::istringstream ss(columnDefs);
+    std::string token;
+    std::string current_def;
     
-    for (const auto& colDef : columnTokens) {
-        std::istringstream iss(colDef);
-        std::string name, type, sizeStr;
-        iss >> name >> type;
+    while (std::getline(ss, token, ',')) {
+        // Trim whitespace from token
+        token.erase(0, token.find_first_not_of(" \t"));
+        token.erase(token.find_last_not_of(" \t") + 1);
         
-        // Extract size from type if present (e.g., VARCHAR(20))
-        size_t openParen = type.find('(');
-        size_t closeParen = type.find(')');
-        int size = 0;
+        std::istringstream def_stream(token);
+        ColumnInfo col;
         
-        if (openParen != std::string::npos && closeParen != std::string::npos) {
-            sizeStr = type.substr(openParen + 1, closeParen - openParen - 1);
-            type = type.substr(0, openParen);
-            size = std::stoi(sizeStr);
-        } else if (type == "INT") {
-            size = sizeof(int);
+        std::string name, type, constraint;
+        def_stream >> name >> type;
+        col.name = name;
+        
+        // Handle VARCHAR(n)
+        if (type.substr(0, 7) == "VARCHAR(") {
+            col.type = "VARCHAR";
+            col.size = std::stoi(type.substr(7, type.length() - 8));
+        } else {
+            col.type = type;
+            if (type == "INT") col.size = sizeof(int);
         }
         
-        columns.push_back({name, type, size});
+        // Parse constraints
+        std::string word;
+        while (def_stream >> word) {
+            if (word == "PRIMARY" && def_stream >> word && word == "KEY") {
+                col.is_primary_key = true;
+            }
+            else if (word == "FOREIGN" && def_stream >> word && word == "KEY") {
+                col.is_foreign_key = true;
+                // Parse REFERENCES
+                if (def_stream >> word && word == "REFERENCES") {
+                    std::string ref_def;
+                    def_stream >> ref_def;
+                    // Parse table(column)
+                    size_t open_paren = ref_def.find('(');
+                    size_t close_paren = ref_def.find(')');
+                    if (open_paren != std::string::npos && close_paren != std::string::npos) {
+                        col.references_table = ref_def.substr(0, open_paren);
+                        col.references_column = ref_def.substr(open_paren + 1, 
+                            close_paren - open_paren - 1);
+                    }
+                }
+            }
+        }
+        columns.push_back(col);
     }
     return columns;
+}
+
+bool handleCreateTable(Database& db, const std::string& command) {
+    std::regex create_pattern(
+        R"(CREATE\s+TABLE\s+(\w+)\s*\(([\s\S]+)\))",
+        std::regex_constants::icase
+    );
+    
+    std::smatch matches;
+    if (std::regex_search(command, matches, create_pattern)) {
+        std::string table_name = matches[1];
+        std::string column_defs = matches[2];
+        
+        std::vector<ColumnInfo> columns = parseColumnDefs(column_defs);
+        return db.createTable(table_name, columns);
+    }
+    return false;
 }
 
 int main() {
@@ -271,9 +317,9 @@ int main() {
                 } else {
                     // Print results
                     for (const auto& record : results) {
-                        for (size_t i = 0; i < record.size(); i++) {
-                            std::cout << record[i];
-                            if (i < record.size() - 1) std::cout << ", ";
+                        for (size_t i = 0; i < record.values.size(); i++) {
+                            std::cout << record.values[i];
+                            if (i < record.values.size() - 1) std::cout << ", ";
                         }
                         std::cout << std::endl;
                     }

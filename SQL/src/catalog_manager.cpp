@@ -4,6 +4,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <algorithm>
+#include <filesystem>
 
 CatalogManager::CatalogManager(const std::string& db_name) 
     : db_name(db_name), 
@@ -63,64 +64,120 @@ TableInfo* CatalogManager::getTableInfo(const std::string& table_name) {
 }
 
 void CatalogManager::loadCatalog() {
-    std::ifstream file(catalog_file);
-    if (!file) return;
+    try {
+        std::cout << "Loading catalog from: " << catalog_file << std::endl;
+        std::ifstream file(catalog_file);
+        if (!file) {
+            std::cout << "No existing catalog file found" << std::endl;
+            return;
+        }
 
-    std::string line;
-    while (std::getline(file, line)) {
-        std::istringstream iss(line);
-        TableInfo table;
-        
-        // Read table name
-        iss >> table.name;
-        
-        // Read columns
-        int col_count;
-        iss >> col_count;
-        for (int i = 0; i < col_count; i++) {
-            ColumnInfo col;
-            iss >> col.name >> col.type >> col.size;
-            table.columns.push_back(col);
+        tables.clear();
+        std::string line;
+
+        // Read number of tables
+        std::getline(file, line);
+        int num_tables = std::stoi(line);
+        std::cout << "Expected number of tables: " << num_tables << std::endl;
+
+        for (int t = 0; t < num_tables; t++) {
+            // Read table name
+            std::getline(file, line);
+            std::string table_name = line;
+            std::cout << "Loading table: " << table_name << std::endl;
+
+            TableInfo table;
+            table.name = table_name;
+
+            // Read number of columns
+            std::getline(file, line);
+            int num_columns = std::stoi(line);
+            std::cout << "Number of columns: " << num_columns << std::endl;
+
+            // Read columns
+            for (int i = 0; i < num_columns; i++) {
+                ColumnInfo col;
+                std::getline(file, col.name);
+                std::getline(file, col.type);
+                std::getline(file, line); col.size = std::stoi(line);
+                std::getline(file, line); col.is_primary_key = (line == "1");
+                std::getline(file, line); col.is_foreign_key = (line == "1");
+
+                if (col.is_foreign_key) {
+                    std::getline(file, col.references_table);
+                    std::getline(file, col.references_column);
+                }
+
+                table.columns.push_back(col);
+                std::cout << "  Loaded column: " << col.name 
+                         << " (Type: " << col.type 
+                         << ", PK: " << col.is_primary_key 
+                         << ", FK: " << col.is_foreign_key << ")" << std::endl;
+            }
+
+            // Set the data file path
+            table.data_file = "./data/" + db_name + "/" + table_name + ".dat";
+            
+            // Add any index files
+            if (table.columns.size() > 0) {
+                for (const auto& col : table.columns) {
+                    if (col.is_primary_key || col.is_foreign_key) {
+                        std::string index_file = table_name + "_" + col.name + ".idx";
+                        table.index_files.push_back(index_file);
+                    }
+                }
+            }
+
+            tables[table_name] = table;
         }
-        
-        // Read data file
-        iss >> table.data_file;
-        
-        // Read index files
-        int idx_count;
-        iss >> idx_count;
-        for (int i = 0; i < idx_count; i++) {
-            std::string idx_file;
-            iss >> idx_file;
-            table.index_files.push_back(idx_file);
-        }
-        
-        tables[table.name] = table;
+
+        std::cout << "Successfully loaded " << tables.size() << " tables from catalog" << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Error loading catalog: " << e.what() << std::endl;
     }
 }
 
 void CatalogManager::saveCatalog() {
-    std::ofstream file(catalog_file);
-    if (!file) return;
+    try {
+        std::cout << "Saving catalog to: " << catalog_file << std::endl;
+        
+        // Create the directory if it doesn't exist
+        std::filesystem::create_directories(std::filesystem::path(catalog_file).parent_path());
+        
+        std::ofstream file(catalog_file);
+        if (!file) {
+            std::cerr << "Failed to open catalog file for writing" << std::endl;
+            return;
+        }
 
-    for (const auto& [table_name, table] : tables) {
-        file << table.name << " ";
-        file << table.columns.size() << " ";
-        
-        for (const auto& col : table.columns) {
-            file << col.name << " " 
-                 << col.type << " " 
-                 << col.size << " ";
+        // Write number of tables first
+        file << tables.size() << "\n";
+
+        for (const auto& [table_name, table] : tables) {
+            std::cout << "Saving table: " << table_name << std::endl;
+            
+            // Write table name
+            file << table_name << "\n";
+            
+            // Write columns
+            file << table.columns.size() << "\n";
+            for (const auto& col : table.columns) {
+                file << col.name << "\n"
+                     << col.type << "\n"
+                     << col.size << "\n"
+                     << (col.is_primary_key ? "1" : "0") << "\n"
+                     << (col.is_foreign_key ? "1" : "0") << "\n";
+                
+                if (col.is_foreign_key) {
+                    file << col.references_table << "\n"
+                         << col.references_column << "\n";
+                }
+            }
         }
         
-        file << table.data_file << " ";
-        file << table.index_files.size() << " ";
-        
-        for (const auto& idx : table.index_files) {
-            file << idx << " ";
-        }
-        
-        file << "\n";
+        std::cout << "Successfully saved catalog with " << tables.size() << " tables" << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Error saving catalog: " << e.what() << std::endl;
     }
 }
 
@@ -137,5 +194,28 @@ bool CatalogManager::removeIndex(const std::string& table_name,
             return true;
         }
     }
+    return false;
+}
+
+bool CatalogManager::validateForeignKeyReference(
+    const std::string& /* foreign_table */,
+    const std::string& /* foreign_column */,
+    const std::string& primary_table,
+    const std::string& primary_column) {
+    
+    // Check if referenced table exists
+    auto primary_table_it = tables.find(primary_table);
+    if (primary_table_it == tables.end()) {
+        return false;
+    }
+
+    // Check if referenced column exists and is a primary key
+    const auto& primary_columns = primary_table_it->second.columns;
+    for (const auto& col : primary_columns) {
+        if (col.name == primary_column) {
+            return col.is_primary_key;
+        }
+    }
+    
     return false;
 }
