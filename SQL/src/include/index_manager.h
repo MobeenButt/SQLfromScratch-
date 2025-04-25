@@ -27,6 +27,7 @@ public:
                 const std::string& op,
                 int value,
                 std::vector<int>& result);
+    bool remove(const std::string& index_file, int key);
 
 private:
     StorageManager* storage_manager;

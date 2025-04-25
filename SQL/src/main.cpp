@@ -19,7 +19,9 @@ void printHelp() {
               << "DELETE FROM <table> WHERE condition\n"
               << "CREATE INDEX ON <table>(<column>)\n"
               << "HELP\n"
-              << "EXIT\n";
+              << "EXIT\n"
+              << "SELECT * FROM <table1> "
+              << "JOIN <table2> ON <table1.column> = <table2.column>\n";
 }
 
 // Helper function to split string by delimiter
@@ -326,7 +328,41 @@ int main() {
                     continue;
                 }
                 
-                executeSelect(*current_db, input);
+                std::string rest_of_query;
+                std::getline(iss, rest_of_query);
+                
+                // Check if this is a join query
+                if (rest_of_query.find("JOIN") != std::string::npos) {
+                    // Parse join query
+                    std::smatch matches;
+                    std::regex join_pattern(
+                        R"(^\s*\*\s+FROM\s+(\w+)\s+JOIN\s+(\w+)\s+ON\s+(\w+)\.(\w+)\s*=\s*(\w+)\.(\w+))");
+                    
+                    if (std::regex_search(rest_of_query, matches, join_pattern)) {
+                        std::string left_table = matches[1];
+                        std::string right_table = matches[2];
+                        std::string left_table_col_ref = matches[3];
+                        std::string left_column = matches[4];
+                        std::string right_table_col_ref = matches[5];
+                        std::string right_column = matches[6];
+                        
+                        // Verify table references
+                        if (left_table != left_table_col_ref || 
+                            right_table != right_table_col_ref) {
+                            std::cout << "Error: Mismatched table references in join\n";
+                            continue;
+                        }
+                        
+                        // Execute join
+                        current_db->join(left_table, right_table, left_column, right_column);
+                    } else {
+                        std::cout << "Error: Invalid join syntax\n";
+                        continue;
+                    }
+                } else {
+                    // Handle regular select
+                    executeSelect(*current_db, input);
+                }
             }
             else if (command == "UPDATE") {
                 if (!current_db) {

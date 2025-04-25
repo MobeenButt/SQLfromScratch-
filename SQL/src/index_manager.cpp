@@ -611,3 +611,47 @@ void BPlusTree::deserializeNode(const Page& page, IndexNode& node) {
         throw;
     }
 }
+
+bool IndexManager::remove(const std::string& index_file, int key) {
+    try {
+        // Read the index page
+        Page index_page;
+        if (!storage_manager->readPage(index_file, 0, index_page)) {
+            std::cerr << "Failed to read index page" << std::endl;
+            return false;
+        }
+
+        // Find and remove the key
+        std::vector<int> keys;
+        size_t offset = 0;
+        while (offset < PAGE_SIZE_BYTES - index_page.getFreeSpace()) {
+            IndexRecord record;
+            index_page.readData(offset, &record, sizeof(IndexRecord));
+            if (record.key != key) {
+                keys.push_back(record.key);
+            }
+            offset += sizeof(IndexRecord);
+        }
+
+        // Write back the remaining keys
+        index_page.clear();
+        offset = 0;
+        for (int k : keys) {
+            IndexRecord rec{k, 0};  // page_id is 0 since we're using a simple index
+            index_page.writeData(offset, &rec, sizeof(IndexRecord));
+            offset += sizeof(IndexRecord);
+        }
+        index_page.setFreeSpace(PAGE_SIZE_BYTES - offset);
+
+        // Write the updated page back
+        if (!storage_manager->writePage(index_file, 0, index_page)) {
+            std::cerr << "Failed to write index page" << std::endl;
+            return false;
+        }
+
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Error removing key from index: " << e.what() << std::endl;
+        return false;
+    }
+}
