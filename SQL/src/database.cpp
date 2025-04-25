@@ -188,10 +188,11 @@ std::vector<Record> Database::select(const std::string& table_name,
     std::vector<Record> result;
     if (where_clause.empty()) {
         // Simple SELECT * case
-        result = storage_manager->getAllRecords(db_name + "/" + table_name);
+        std::string data_file = getTablePath(table_name);
+        result = storage_manager->getAllRecords(data_file);
         
         // Display results
-    TableInfo* table = catalog_manager->getTableInfo(table_name);
+        TableInfo* table = catalog_manager->getTableInfo(table_name);
         if (table) {
             std::cout << "\nQuery Results (" << result.size() << " records):\n";
             std::cout << "----------------------------------------\n";
@@ -311,162 +312,234 @@ std::vector<std::string> readRecord(const char* data, const std::vector<ColumnIn
 bool Database::update(const std::string& table_name, 
                      const std::string& set_clause,
                      const std::string& where_clause) {
-    std::vector<Record> records_to_update;
-    if (!selectWithCondition(table_name, "id", "=", where_clause, records_to_update)) {
-        return false;
-    }
-
-    TableInfo* table = catalog_manager->getTableInfo(table_name);
-    if (!table) {
-        return false;
-    }
-
-    // Parse set clause (format: "column_name = new_value")
-    std::istringstream set_iss(set_clause);
-    std::string update_col, equals, new_value;
-    set_iss >> update_col >> equals >> new_value;
-
-    if (equals != "=") return false;
-
-    // Find update column index and validate new value
-    int update_col_idx = -1;
-    for (size_t i = 0; i < table->columns.size(); i++) {
-        if (table->columns[i].name == update_col) {
-            update_col_idx = i;
-            // Validate new value type
-            if (table->columns[i].type == "INT") {
-                try {
-                    std::stoi(new_value);
-                } catch (...) {
-                    return false;
-                }
-            } else if (table->columns[i].type == "VARCHAR") {
-                if (new_value.length() > static_cast<size_t>(table->columns[i].size)) {
-                    return false;
-                }
-            }
-            break;
+    try {
+        // Parse where clause to get the value
+        std::istringstream where_iss(where_clause);
+        std::string column, op, value;
+        where_iss >> column >> op >> value;
+        
+        // Remove any quotes from the value if present
+        if (!value.empty() && (value[0] == '\'' || value[0] == '"')) {
+            value = value.substr(1, value.length() - 2);
         }
-    }
-
-    if (update_col_idx == -1) return false;
-
-    // Update records
-    Page page;
-    int page_id = 0;
-    bool success = true;
-
-    while (storage_manager->readPage(table->data_file, page_id, page)) {
-        bool page_modified = false;
-        size_t offset = 0;
-
-        while (offset < static_cast<size_t>(PAGE_SIZE_BYTES - page.getFreeSpace())) {
-            Record current_record;
-            page.readData(offset, &current_record, sizeof(Record));
-
-            // Check if this record matches any record to update
-            for (const auto& record : records_to_update) {
-                if (record.values == current_record.values) {
-                    // Update the record
-                    Record updated_record;
-                    updated_record.values = record.values;
-                    if (table->columns[update_col_idx].type == "INT") {
-                        int new_val = std::stoi(new_value);
-                        updated_record.values[update_col_idx] = std::to_string(new_val);
-                    }
-                    else if (table->columns[update_col_idx].type == "VARCHAR") {
-                        std::string padded_value = new_value;
-                        padded_value.append(
-                            table->columns[update_col_idx].size - new_value.length(), 
-                            '\0');
-                        updated_record.values[update_col_idx] = padded_value;
-                    }
-                    page.writeData(offset, &updated_record, sizeof(Record));
-                    page_modified = true;
-                }
-            }
-
-            offset += sizeof(Record);
+        
+        std::vector<Record> records_to_update;
+        if (!selectWithCondition(table_name, column, op, value, records_to_update)) {
+            return false;
         }
 
-        if (page_modified) {
-            if (!storage_manager->writePage(table->data_file, page_id, page)) {
-                success = false;
+        TableInfo* table = catalog_manager->getTableInfo(table_name);
+        if (!table) {
+            return false;
+        }
+
+        // Parse set clause (format: "column_name = new_value")
+        std::istringstream set_iss(set_clause);
+        std::string update_col, equals, new_value;
+        set_iss >> update_col >> equals >> new_value;
+
+        if (equals != "=") return false;
+
+        // Remove any quotes from the new value if present
+        if (!new_value.empty() && (new_value[0] == '\'' || new_value[0] == '"')) {
+            new_value = new_value.substr(1, new_value.length() - 2);
+        }
+
+        // Find update column index and validate new value
+        int update_col_idx = -1;
+        for (size_t i = 0; i < table->columns.size(); i++) {
+            if (table->columns[i].name == update_col) {
+                update_col_idx = i;
+                // Validate new value type
+                if (table->columns[i].type == "INT") {
+                    try {
+                        std::stoi(new_value);
+                    } catch (...) {
+                        return false;
+                    }
+                } else if (table->columns[i].type == "VARCHAR") {
+                    if (new_value.length() > static_cast<size_t>(table->columns[i].size)) {
+                        return false;
+                    }
+                }
                 break;
             }
         }
-        page_id++;
-    }
 
-    return success;
+        if (update_col_idx == -1) return false;
+
+        // Update records
+        Page page;
+        int page_id = 0;
+        bool success = true;
+
+        while (storage_manager->readPage(table->data_file, page_id, page)) {
+            bool page_modified = false;
+            size_t offset = 0;
+
+            while (offset < static_cast<size_t>(PAGE_SIZE_BYTES - page.getFreeSpace())) {
+                Record current_record;
+                page.readData(offset, &current_record, sizeof(Record));
+
+                // Check if this record matches any record to update
+                for (const auto& record : records_to_update) {
+                    if (record.values == current_record.values) {
+                        // Update the record
+                        Record updated_record;
+                        updated_record.values = record.values;
+                        if (table->columns[update_col_idx].type == "INT") {
+                            int new_val = std::stoi(new_value);
+                            updated_record.values[update_col_idx] = std::to_string(new_val);
+                        }
+                        else if (table->columns[update_col_idx].type == "VARCHAR") {
+                            std::string padded_value = new_value;
+                            padded_value.append(
+                                table->columns[update_col_idx].size - new_value.length(), 
+                                '\0');
+                            updated_record.values[update_col_idx] = padded_value;
+                        }
+                        page.writeData(offset, &updated_record, sizeof(Record));
+                        page_modified = true;
+                    }
+                }
+
+                offset += sizeof(Record);
+            }
+
+            if (page_modified) {
+                if (!storage_manager->writePage(table->data_file, page_id, page)) {
+                    success = false;
+                    break;
+                }
+            }
+            page_id++;
+        }
+
+        return success;
+    } catch (const std::exception& e) {
+        std::cerr << "Error in update: " << e.what() << std::endl;
+        return false;
+    }
 }
 
 bool Database::remove(const std::string& table_name, 
                      const std::string& where_clause) {
-    std::vector<Record> records_to_delete;
-    if (!selectWithCondition(table_name, "id", "=", where_clause, records_to_delete)) {
-        return false;
-    }
+    try {
+        // Parse where clause to get the value
+        std::istringstream where_iss(where_clause);
+        std::string column, op, value;
+        where_iss >> column >> op >> value;
+        
+        // Remove any quotes from the value if present
+        if (!value.empty() && (value[0] == '\'' || value[0] == '"')) {
+            value = value.substr(1, value.length() - 2);
+        }
+        
+        std::vector<Record> records_to_delete;
+        if (!selectWithCondition(table_name, column, op, value, records_to_delete)) {
+            return false;
+        }
 
-    TableInfo* table = catalog_manager->getTableInfo(table_name);
-    if (!table) {
-        return false;
-    }
+        TableInfo* table = catalog_manager->getTableInfo(table_name);
+        if (!table) {
+            return false;
+        }
 
-    Page page;
-    int page_id = 0;
-    bool success = true;
+        Page page;
+        int page_id = 0;
+        bool success = true;
 
-    while (storage_manager->readPage(table->data_file, page_id, page)) {
-        bool page_modified = false;
-        size_t read_offset = 0;
-        size_t write_offset = 0;
+        while (storage_manager->readPage(table->data_file, page_id, page)) {
+            bool page_modified = false;
+            size_t read_offset = 0;
+            size_t write_offset = 0;
 
-        while (read_offset < static_cast<size_t>(PAGE_SIZE_BYTES - page.getFreeSpace())) {
-            Record current_record;
-            page.readData(read_offset, &current_record, sizeof(Record));
+            while (read_offset < static_cast<size_t>(PAGE_SIZE_BYTES - page.getFreeSpace())) {
+                Record current_record;
+                page.readData(read_offset, &current_record, sizeof(Record));
 
-            // Check if this record should be deleted
-            bool should_delete = false;
-            for (const auto& record : records_to_delete) {
-                if (record.values == current_record.values) {
-                    should_delete = true;
+                // Check if this record should be deleted
+                bool should_delete = false;
+                for (const auto& record : records_to_delete) {
+                    if (record.values == current_record.values) {
+                        should_delete = true;
+                        break;
+                    }
+                }
+
+                if (!should_delete) {
+                    // Keep this record by moving it to write_offset if necessary
+                    if (write_offset != read_offset) {
+                        page.moveData(write_offset, read_offset, sizeof(Record));
+                        page_modified = true;
+                    }
+                    write_offset += sizeof(Record);
+                } else {
+                    page_modified = true;
+                }
+
+                read_offset += sizeof(Record);
+            }
+
+            if (page_modified) {
+                // Update free space
+                page.setFreeSpace(PAGE_SIZE_BYTES - write_offset);
+                
+                // Clear the rest of the page
+                if (write_offset < PAGE_SIZE_BYTES) {
+                    memset(page.getData() + write_offset, 0, PAGE_SIZE_BYTES - write_offset);
+                }
+
+                if (!storage_manager->writePage(table->data_file, page_id, page)) {
+                    success = false;
                     break;
                 }
             }
+            page_id++;
+        }
 
-            if (!should_delete) {
-                // Keep this record by moving it to write_offset if necessary
-                if (write_offset != read_offset) {
-                    page.moveData(write_offset, read_offset, sizeof(Record));
-                    page_modified = true;
+        // Update indexes after deletion
+        for (const auto& col : table->columns) {
+            if (col.is_primary_key) {
+                std::string index_file = db_name + "/" + table_name + "_" + col.name + ".idx";
+                for (const auto& record : records_to_delete) {
+                    try {
+                        int key = std::stoi(record.values[0]); // Assuming first column is the key
+                        
+                        // First verify the key exists
+                        if (index_manager->exists("./data/" + index_file, key)) {
+                            // Create a new empty page
+                            Page index_page;
+                            std::vector<int> keys;
+                            // Search for all keys except the one we're deleting
+                            if (index_manager->search("./data/" + index_file, "!=", key, keys)) {
+                                // Write back all keys except the deleted one
+                                size_t offset = 0;
+                                for (int k : keys) {
+                                    IndexRecord rec{k, 0}; // page_id is 0 since we're using a simple index
+                                    index_page.writeData(offset, &rec, sizeof(IndexRecord));
+                                    offset += sizeof(IndexRecord);
+                                }
+                                index_page.setFreeSpace(PAGE_SIZE_BYTES - offset);
+                                if (!storage_manager->writePage("./data/" + index_file, 0, index_page)) {
+                                    std::cerr << "Failed to update index after deletion: " << index_file << std::endl;
+                                    success = false;
+                                }
+                            }
+                        }
+                    } catch (const std::exception& e) {
+                        std::cerr << "Error updating index after deletion: " << e.what() << std::endl;
+                        success = false;
+                    }
                 }
-                write_offset += sizeof(Record);
-            } else {
-                page_modified = true;
-            }
-
-            read_offset += sizeof(Record);
-        }
-
-        if (page_modified) {
-            // Update free space
-            page.setFreeSpace(PAGE_SIZE_BYTES - write_offset);
-            
-            // Clear the rest of the page
-            if (write_offset < PAGE_SIZE_BYTES) {
-                memset(page.getData() + write_offset, 0, PAGE_SIZE_BYTES - write_offset);
-            }
-
-            if (!storage_manager->writePage(table->data_file, page_id, page)) {
-                success = false;
-                break;
             }
         }
-        page_id++;
+
+        return success;
+    } catch (const std::exception& e) {
+        std::cerr << "Error in remove: " << e.what() << std::endl;
+        return false;
     }
-
-    return success;
 }
 
 void updateRecord(Page& page, size_t offset, const Record& new_record) {
