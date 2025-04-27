@@ -207,7 +207,8 @@ bool Database::insert(const std::string& table_name,
         if (col.is_primary_key) {
             try {
                 int key = std::stoi(values[i]);
-                std::string index_file = db_name + "/" + table_name + "_" + col.name + ".idx";
+                // Fix the path to include the proper prefix
+                std::string index_file = "./data/" + db_name + "/" + table_name + "_" + col.name + ".idx";
                 std::cout << "Checking primary key constraint in: " << index_file << std::endl;
                 
                 if (index_manager->exists(index_file, key)) {
@@ -235,12 +236,12 @@ bool Database::insert(const std::string& table_name,
         if (col.is_primary_key) {
             try {
                 int key = std::stoi(values[i]);
-                std::string index_file = db_name + "/" + table_name + "_" + col.name + ".idx";
+                // Fix the path to include the proper prefix
+                std::string index_file = "./data/" + db_name + "/" + table_name + "_" + col.name + ".idx";
                 std::cout << "Updating index: " << index_file << std::endl;
                 
                 if (!index_manager->insert(index_file, key, record)) {
                     std::cerr << "Failed to update index: " << index_file << std::endl;
-                    // You might want to roll back the record insertion here
                     return false;
                 }
             } catch (const std::exception& e) {
@@ -380,185 +381,376 @@ std::vector<std::string> readRecord(const char* data, const std::vector<ColumnIn
     return record;
 }
 
-bool Database::update(const std::string& table_name, 
+bool Database::update(const std::string& table_name,
                      const std::string& set_clause,
                      const std::string& where_clause) {
     try {
-        // Parse where clause to get the value
+        // Parse WHERE clause
         std::istringstream where_iss(where_clause);
         std::string column, op, value;
-        where_iss >> column >> op >> value;
-        
-        // Remove any quotes from the value if present
-        if (!value.empty() && (value[0] == '\'' || value[0] == '"')) {
+        where_iss >> column >> op;
+        std::getline(where_iss, value);
+        value = value.substr(value.find_first_not_of(" \t"));
+        if (!value.empty() && (value[0] == '\'' || value[0] == '"'))
             value = value.substr(1, value.length() - 2);
+
+        // Find records to update
+        std::vector<Record> records_to_update_metadata;
+        if (!selectWithCondition(table_name, column, op, value, records_to_update_metadata)) {
+            if (records_to_update_metadata.empty()) {
+                std::cout << "No records matched the WHERE clause. No update performed." << std::endl;
+                return true;
+            }
+            std::cerr << "Error during selectWithCondition for update." << std::endl;
+            return false;
         }
+        if (records_to_update_metadata.empty()) {
+            std::cout << "No records matched the WHERE clause. No update performed." << std::endl;
+            return true;
+        }
+
+        // Display query results
+        std::cout << "\nQuery Results (" << records_to_update_metadata.size() << " records):" << std::endl;
+        std::cout << "----------------------------------------" << std::endl;
         
-        std::vector<Record> records_to_update;
-        if (!selectWithCondition(table_name, column, op, value, records_to_update)) {
-            std::cerr << "Failed to find records to update" << std::endl;
-            return false;
-        }
-
         TableInfo* table = catalog_manager->getTableInfo(table_name);
-        if (!table) {
-            std::cerr << "Table not found" << std::endl;
-            return false;
+        if (!table) return false;
+        
+        for (size_t i = 0; i < table->columns.size(); i++) {
+            std::cout << std::left << std::setw(15) << table->columns[i].name;
         }
-
-        // Parse set clause (format: "column_name = new_value")
-        std::istringstream set_iss(set_clause);
-        std::string update_col, equals, new_value;
-        set_iss >> update_col >> equals >> new_value;
-
-        if (equals != "=") {
-            std::cerr << "Invalid SET clause format" << std::endl;
-            return false;
+        std::cout << std::endl;
+        std::cout << "----------------------------------------" << std::endl;
+        
+        for (const auto& record : records_to_update_metadata) {
+            for (size_t i = 0; i < record.values.size(); i++) {
+                std::string display_value = record.values[i];
+                std::cout << std::left << std::setw(15) << display_value;
+            }
+            std::cout << std::endl;
         }
+        std::cout << "----------------------------------------" << std::endl;
 
-        // Remove any quotes from the new value if present
-        if (!new_value.empty() && (new_value[0] == '\'' || new_value[0] == '"')) {
-            new_value = new_value.substr(1, new_value.length() - 2);
-        }
+        // Parse SET clause
+        size_t equals_pos = set_clause.find('=');
+        if (equals_pos == std::string::npos) return false;
+        std::string update_col_name = set_clause.substr(0, equals_pos);
+        std::string new_value_str = set_clause.substr(equals_pos + 1);
+        update_col_name.erase(0, update_col_name.find_first_not_of(" \t"));
+        update_col_name.erase(update_col_name.find_last_not_of(" \t") + 1);
+        new_value_str.erase(0, new_value_str.find_first_not_of(" \t"));
+        new_value_str.erase(new_value_str.find_last_not_of(" \t") + 1);
+        if (!new_value_str.empty() && (new_value_str[0] == '\'' || new_value_str[0] == '"'))
+            new_value_str = new_value_str.substr(1, new_value_str.length() - 2);
 
-        // Find update column index
+        // Find column index
         int update_col_idx = -1;
         for (size_t i = 0; i < table->columns.size(); i++) {
-            if (table->columns[i].name == update_col) {
+            if (table->columns[i].name == update_col_name) {
                 update_col_idx = i;
-                // Validate new value type
-                if (table->columns[i].type == "INT") {
-                    try {
-                        std::stoi(new_value);
-                    } catch (...) {
-                        std::cerr << "Invalid integer value" << std::endl;
-                        return false;
-                    }
-                } else if (table->columns[i].type == "VARCHAR") {
-                    if (new_value.length() > static_cast<size_t>(table->columns[i].size)) {
-                        std::cerr << "String value too long" << std::endl;
-                        return false;
-                    }
-                }
                 break;
             }
         }
+        if (update_col_idx == -1) return false;
 
-        if (update_col_idx == -1) {
-            std::cerr << "Update column not found" << std::endl;
+        // Check if we're updating a primary key column
+        bool updating_primary_key = table->columns[update_col_idx].is_primary_key;
+
+        // Get the data file path
+        std::string data_file = getTablePath(table_name);
+        
+        // Read all records first
+        std::vector<Record> all_records;
+        std::ifstream inFile(data_file, std::ios::binary);
+        if (!inFile) {
+            std::cerr << "Failed to open file: " << data_file << std::endl;
             return false;
         }
-
-        std::string data_file = getTablePath(table_name);
-        std::vector<Record> all_records = storage_manager->getAllRecords(data_file);
+        
+        // Get file size
+        inFile.seekg(0, std::ios::end);
+        size_t file_size = inFile.tellg();
+        inFile.seekg(0, std::ios::beg);
+        
+        // Read all records from file
+        if (file_size > 0) {
+            std::vector<char> buffer(file_size);
+            inFile.read(buffer.data(), file_size);
+            
+            size_t pos = 0;
+            while (pos < file_size) {
+                // Read record size
+                size_t record_size;
+                if (pos + sizeof(size_t) > file_size) break;
+                memcpy(&record_size, buffer.data() + pos, sizeof(size_t));
+                
+                if (record_size == 0 || pos + record_size > file_size) break;
+                
+                // Create new record and deserialize
+                Record record;
+                
+                // Manual deserialization
+                size_t data_pos = pos + sizeof(size_t); // Skip record size
+                
+                // Read number of values
+                size_t num_values;
+                memcpy(&num_values, buffer.data() + data_pos, sizeof(size_t));
+                data_pos += sizeof(size_t);
+                
+                // Read values
+                for (size_t i = 0; i < num_values; i++) {
+                    size_t str_len;
+                    memcpy(&str_len, buffer.data() + data_pos, sizeof(size_t));
+                    data_pos += sizeof(size_t);
+                    
+                    std::string value(buffer.data() + data_pos, str_len);
+                    record.values.push_back(value);
+                    data_pos += str_len;
+                }
+                
+                all_records.push_back(record);
+                pos += record_size;
+            }
+        }
+        inFile.close();
         
         // Update matching records
+        bool any_updated = false;
         for (auto& record : all_records) {
-            for (const auto& update_record : records_to_update) {
-                if (record.values == update_record.values) {
-                    // Update the value
-                    record.values[update_col_idx] = new_value;
+            for (const auto& meta_record : records_to_update_metadata) {
+                if (record.values == meta_record.values) {
+                    record.values[update_col_idx] = new_value_str;
+                    any_updated = true;
+                    break;
                 }
             }
         }
-
-        // Write back all records
-        Page page;
-        size_t offset = 0;
         
-        for (const auto& record : all_records) {
-            if (offset + sizeof(size_t) + record.getSize() > PAGE_SIZE_BYTES) {
-                // Write current page and create new one
-                if (!storage_manager->writePage(data_file, 0, page)) {
-                    std::cerr << "Failed to write page during update" << std::endl;
-                    return false;
-                }
-                page.clear();
-                offset = 0;
-            }
-            
-            // Write record size
-            size_t record_size = record.getSize();
-            page.writeData(offset, &record_size, sizeof(size_t));
-            offset += sizeof(size_t);
-            
-            // Write record data
-            char buffer[PAGE_SIZE_BYTES];
-            record.serialize(buffer);
-            page.writeData(offset, buffer, record_size);
-            offset += record_size;
-        }
-
-        // Write final page
-        page.setFreeSpace(PAGE_SIZE_BYTES - offset);
-        if (!storage_manager->writePage(data_file, 0, page)) {
-            std::cerr << "Failed to write final page during update" << std::endl;
+        // Create temporary file and write all records
+        std::string temp_file = data_file + ".tmp";
+        std::ofstream outFile(temp_file, std::ios::binary);
+        if (!outFile) {
+            std::cerr << "Failed to create temporary file: " << temp_file << std::endl;
             return false;
         }
-
-        // Update indexes if necessary
-        if (table->columns[update_col_idx].is_primary_key) {
-            std::string index_file = getIndexPath(db_name, table_name, update_col);
-            for (const auto& record : records_to_update) {
-                try {
-                    int old_key = std::stoi(record.values[update_col_idx]);
-                    int new_key = std::stoi(new_value);
-                    
-                    if (!index_manager->remove(index_file, old_key)) {
-                        std::cerr << "Failed to remove old index entry" << std::endl;
-                        return false;
+        
+        // Write all records to the temporary file
+        for (const auto& record : all_records) {
+            // Calculate record size
+            size_t total_size = sizeof(size_t); // Size field itself
+            total_size += sizeof(size_t);       // Number of values
+            
+            for (const auto& value : record.values) {
+                total_size += sizeof(size_t);   // String length
+                total_size += value.length();   // String content
+            }
+            
+            // Create buffer
+            std::vector<char> buffer(total_size);
+            size_t pos = 0;
+            
+            // Write total size first
+            memcpy(buffer.data() + pos, &total_size, sizeof(size_t));
+            pos += sizeof(size_t);
+            
+            // Write number of values
+            size_t num_values = record.values.size();
+            memcpy(buffer.data() + pos, &num_values, sizeof(size_t));
+            pos += sizeof(size_t);
+            
+            // Write all values
+            for (const auto& value : record.values) {
+                // Write string length
+                size_t len = value.length();
+                memcpy(buffer.data() + pos, &len, sizeof(size_t));
+                pos += sizeof(size_t);
+                
+                // Write string content
+                memcpy(buffer.data() + pos, value.c_str(), len);
+                pos += len;
+            }
+            
+            // Write to file
+            outFile.write(buffer.data(), total_size);
+        }
+        
+        outFile.close();
+        
+        // Replace original file with temporary file
+        if (std::remove(data_file.c_str()) != 0) {
+            std::cerr << "Failed to remove original file: " << data_file << std::endl;
+            std::remove(temp_file.c_str());
+            return false;
+        }
+        
+        if (std::rename(temp_file.c_str(), data_file.c_str()) != 0) {
+            std::cerr << "Failed to rename temporary file: " << temp_file << std::endl;
+            return false;
+        }
+        
+        // Rebuild indexes if necessary
+        if (updating_primary_key) {
+            for (const auto& col : table->columns) {
+                if (col.is_primary_key) {
+                    // Find column index
+                    int col_index = -1;
+                    for (size_t i = 0; i < table->columns.size(); i++) {
+                        if (table->columns[i].name == col.name) {
+                            col_index = i;
+                            break;
+                        }
                     }
                     
-                    Record updated_record = record;
-                    updated_record.values[update_col_idx] = new_value;
-                    if (!index_manager->insert(index_file, new_key, updated_record)) {
-                        std::cerr << "Failed to insert new index entry" << std::endl;
-                        return false;
+                    if (col_index >= 0) {
+                        // Recreate index
+                        std::string index_file = db_name + "/" + table_name + "_" + col.name + ".idx";
+                        
+                        // Drop old index
+                        if (!index_manager->dropIndex(db_name, table_name, col.name)) {
+                            std::cerr << "Failed to drop index for column: " << col.name << std::endl;
+                        }
+                        
+                        // Create new index
+                        if (!index_manager->createIndex(db_name, table_name, col.name)) {
+                            std::cerr << "Failed to rebuild index for column: " << col.name << std::endl;
+                            return false;
+                        }
+                        
+                        // Rebuild index with all records
+                        for (const auto& record : all_records) {
+                            if (col_index < record.values.size()) {
+                                try {
+                                    int key = std::stoi(record.values[col_index]);
+                                    if (!index_manager->insert(index_file, key, record)) {
+                                        std::cerr << "Failed to update index with key: " << key << std::endl;
+                                    }
+                                } catch (...) {
+                                    std::cerr << "Error parsing key for index" << std::endl;
+                                }
+                            }
+                        }
                     }
-                } catch (const std::exception& e) {
-                    std::cerr << "Error updating index: " << e.what() << std::endl;
-                    return false;
                 }
             }
         }
-
+        
+        std::cout << "Records updated successfully" << std::endl;
         return true;
     } catch (const std::exception& e) {
-        std::cerr << "Error in update: " << e.what() << std::endl;
+        std::cerr << "Exception in Database::update: " << e.what() << std::endl;
         return false;
     }
 }
 
-bool Database::remove(const std::string& table_name, 
+bool Database::remove(const std::string& table_name,
                      const std::string& where_clause) {
     try {
-        // Parse where clause to get the value
+        // Parse WHERE clause
         std::istringstream where_iss(where_clause);
         std::string column, op, value;
-        where_iss >> column >> op >> value;
-        
-        // Remove any quotes from the value if present
-        if (!value.empty() && (value[0] == '\'' || value[0] == '"')) {
+        where_iss >> column >> op;
+        std::getline(where_iss, value);
+        value = value.substr(value.find_first_not_of(" \t"));
+        if (!value.empty() && (value[0] == '\'' || value[0] == '"'))
             value = value.substr(1, value.length() - 2);
-        }
-        
+
+        // Find records to delete
         std::vector<Record> records_to_delete;
         if (!selectWithCondition(table_name, column, op, value, records_to_delete)) {
-            std::cerr << "Failed to find records to delete" << std::endl;
+            if (records_to_delete.empty()) {
+                std::cout << "No records matched the WHERE clause. No delete performed." << std::endl;
+                return true;
+            }
+            std::cerr << "Error during selectWithCondition for delete." << std::endl;
             return false;
         }
+        if (records_to_delete.empty()) {
+            std::cout << "No records matched the WHERE clause. No delete performed." << std::endl;
+            return true;
+        }
 
+        // Display query results
+        std::cout << "\nQuery Results (" << records_to_delete.size() << " records):" << std::endl;
+        std::cout << "----------------------------------------" << std::endl;
+        
         TableInfo* table = catalog_manager->getTableInfo(table_name);
-        if (!table) {
-            std::cerr << "Table not found: " << table_name << std::endl;
+        if (!table) return false;
+        
+        for (size_t i = 0; i < table->columns.size(); i++) {
+            std::cout << std::left << std::setw(15) << table->columns[i].name;
+        }
+        std::cout << std::endl;
+        std::cout << "----------------------------------------" << std::endl;
+        
+        for (const auto& record : records_to_delete) {
+            for (size_t i = 0; i < record.values.size(); i++) {
+                std::string display_value = record.values[i];
+                std::cout << std::left << std::setw(15) << display_value;
+            }
+            std::cout << std::endl;
+        }
+        std::cout << "----------------------------------------" << std::endl;
+
+        // Get the data file path
+        std::string data_file = getTablePath(table_name);
+        
+        // Read all records first
+        std::vector<Record> all_records;
+        std::ifstream inFile(data_file, std::ios::binary);
+        if (!inFile) {
+            std::cerr << "Failed to open file: " << data_file << std::endl;
             return false;
         }
-
-        std::string data_file = getTablePath(table_name);
-        std::vector<Record> all_records = storage_manager->getAllRecords(data_file);
+        
+        // Get file size
+        inFile.seekg(0, std::ios::end);
+        size_t file_size = inFile.tellg();
+        inFile.seekg(0, std::ios::beg);
+        
+        // Read all records from file
+        if (file_size > 0) {
+            std::vector<char> buffer(file_size);
+            inFile.read(buffer.data(), file_size);
+            
+            size_t pos = 0;
+            while (pos < file_size) {
+                // Read record size
+                size_t record_size;
+                if (pos + sizeof(size_t) > file_size) break;
+                memcpy(&record_size, buffer.data() + pos, sizeof(size_t));
+                
+                if (record_size == 0 || pos + record_size > file_size) break;
+                
+                // Create new record and deserialize
+                Record record;
+                
+                // Manual deserialization
+                size_t data_pos = pos + sizeof(size_t); // Skip record size
+                
+                // Read number of values
+                size_t num_values;
+                memcpy(&num_values, buffer.data() + data_pos, sizeof(size_t));
+                data_pos += sizeof(size_t);
+                
+                // Read values
+                for (size_t i = 0; i < num_values; i++) {
+                    size_t str_len;
+                    memcpy(&str_len, buffer.data() + data_pos, sizeof(size_t));
+                    data_pos += sizeof(size_t);
+                    
+                    std::string value(buffer.data() + data_pos, str_len);
+                    record.values.push_back(value);
+                    data_pos += str_len;
+                }
+                
+                all_records.push_back(record);
+                pos += record_size;
+            }
+        }
+        inFile.close();
+        
+        // Filter out records to delete
         std::vector<Record> remaining_records;
-
-        // Keep records that don't match deletion criteria
         for (const auto& record : all_records) {
             bool should_delete = false;
             for (const auto& del_record : records_to_delete) {
@@ -567,67 +759,122 @@ bool Database::remove(const std::string& table_name,
                     break;
                 }
             }
+            
             if (!should_delete) {
                 remaining_records.push_back(record);
             }
         }
-
-        // Write back remaining records
-        Page page;
-        size_t offset = 0;
         
-        for (const auto& record : remaining_records) {
-            if (offset + sizeof(size_t) + record.getSize() > PAGE_SIZE_BYTES) {
-                // Write current page and create new one
-                if (!storage_manager->writePage(data_file, 0, page)) {
-                    std::cerr << "Failed to write page during delete" << std::endl;
-                    return false;
-                }
-                page.clear();
-                offset = 0;
-            }
-            
-            // Write record size
-            size_t record_size = record.getSize();
-            page.writeData(offset, &record_size, sizeof(size_t));
-            offset += sizeof(size_t);
-            
-            // Write record data
-            char buffer[PAGE_SIZE_BYTES];
-            record.serialize(buffer);
-            page.writeData(offset, buffer, record_size);
-            offset += record_size;
-        }
-
-        // Write final page
-        page.setFreeSpace(PAGE_SIZE_BYTES - offset);
-        if (!storage_manager->writePage(data_file, 0, page)) {
-            std::cerr << "Failed to write final page during delete" << std::endl;
+        // Create temporary file and write remaining records
+        std::string temp_file = data_file + ".tmp";
+        std::ofstream outFile(temp_file, std::ios::binary);
+        if (!outFile) {
+            std::cerr << "Failed to create temporary file: " << temp_file << std::endl;
             return false;
         }
-
-        // Update indexes
+        
+        // Write remaining records to the temporary file
+        for (const auto& record : remaining_records) {
+            // Calculate record size
+            size_t total_size = sizeof(size_t); // Size field itself
+            total_size += sizeof(size_t);       // Number of values
+            
+            for (const auto& value : record.values) {
+                total_size += sizeof(size_t);   // String length
+                total_size += value.length();   // String content
+            }
+            
+            // Create buffer
+            std::vector<char> buffer(total_size);
+            size_t pos = 0;
+            
+            // Write total size first
+            memcpy(buffer.data() + pos, &total_size, sizeof(size_t));
+            pos += sizeof(size_t);
+            
+            // Write number of values
+            size_t num_values = record.values.size();
+            memcpy(buffer.data() + pos, &num_values, sizeof(size_t));
+            pos += sizeof(size_t);
+            
+            // Write all values
+            for (const auto& value : record.values) {
+                // Write string length
+                size_t len = value.length();
+                memcpy(buffer.data() + pos, &len, sizeof(size_t));
+                pos += sizeof(size_t);
+                
+                // Write string content
+                memcpy(buffer.data() + pos, value.c_str(), len);
+                pos += len;
+            }
+            
+            // Write to file
+            outFile.write(buffer.data(), total_size);
+        }
+        
+        outFile.close();
+        
+        // Replace original file with temporary file
+        if (std::remove(data_file.c_str()) != 0) {
+            std::cerr << "Failed to remove original file: " << data_file << std::endl;
+            std::remove(temp_file.c_str());
+            return false;
+        }
+        
+        if (std::rename(temp_file.c_str(), data_file.c_str()) != 0) {
+            std::cerr << "Failed to rename temporary file: " << temp_file << std::endl;
+            return false;
+        }
+        
+        // Rebuild all indexes
         for (const auto& col : table->columns) {
             if (col.is_primary_key) {
-                std::string index_file = getIndexPath(db_name, table_name, col.name);
-                for (const auto& record : records_to_delete) {
-                    try {
-                        int key = std::stoi(record.values[0]);
-                        if (!index_manager->remove(index_file, key)) {
-                            std::cerr << "Failed to update index for key: " << key << std::endl;
-                            return false;
-                        }
-                    } catch (const std::exception& e) {
-                        std::cerr << "Error updating index: " << e.what() << std::endl;
+                // Find column index
+                int col_index = -1;
+                for (size_t i = 0; i < table->columns.size(); i++) {
+                    if (table->columns[i].name == col.name) {
+                        col_index = i;
+                        break;
+                    }
+                }
+                
+                if (col_index >= 0) {
+                    // Recreate index
+                    std::string index_file = db_name + "/" + table_name + "_" + col.name + ".idx";
+                    
+                    // Drop old index
+                    if (!index_manager->dropIndex(db_name, table_name, col.name)) {
+                        std::cerr << "Failed to drop index for column: " << col.name << std::endl;
+                    }
+                    
+                    // Create new index
+                    if (!index_manager->createIndex(db_name, table_name, col.name)) {
+                        std::cerr << "Failed to rebuild index for column: " << col.name << std::endl;
                         return false;
+                    }
+                    
+                    // Rebuild index with remaining records
+                    for (const auto& record : remaining_records) {
+                        if (col_index < record.values.size()) {
+                            try {
+                                int key = std::stoi(record.values[col_index]);
+                                if (!index_manager->insert(index_file, key, record)) {
+                                    std::cerr << "Failed to update index with key: " << key << std::endl;
+                                }
+                            } catch (...) {
+                                std::cerr << "Error parsing key for index" << std::endl;
+                            }
+                        }
                     }
                 }
             }
         }
-
+        
+        std::cout << "Records deleted successfully" << std::endl;
         return true;
     } catch (const std::exception& e) {
-        std::cerr << "Error in remove: " << e.what() << std::endl;
+        std::cerr << "Exception in Database::remove: " << e.what() << std::endl;
         return false;
     }
 }
