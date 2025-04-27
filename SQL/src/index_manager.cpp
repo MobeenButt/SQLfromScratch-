@@ -55,269 +55,179 @@ IndexManager::~IndexManager() {
 bool IndexManager::createIndex(const std::string& db_name,
                              const std::string& table_name,
                              const std::string& column_name) {
-    try {
-        std::string index_file = "./data/" + db_name + "/" + 
-                                table_name + "_" + column_name + ".idx";
-        
-        std::cout << "Creating index file: " << index_file << std::endl;
-        
-        // Create the directory if it doesn't exist
-        std::filesystem::path dir_path = std::filesystem::path(index_file).parent_path();
-        std::filesystem::create_directories(dir_path);
-        
-        // Create the file first using createTable (which handles file creation)
-        if (!storage_manager->createTable(db_name, table_name + "_" + column_name + ".idx")) {
-            std::cerr << "Failed to create index file" << std::endl;
-            return false;
-        }
-        
-        // Initialize empty root page
-        Page empty_page;
-        empty_page.setLeaf(true);
-        empty_page.setNumKeys(0);
-        empty_page.setFreeSpace(PAGE_SIZE_BYTES);
-        empty_page.clear();
-        
-        // Write the empty root page
-        if (!storage_manager->writePage(index_file, 0, empty_page)) {
-            std::cerr << "Failed to write initial index page" << std::endl;
+    std::string index_file = "./data/" + db_name + "/" + table_name + "_" + column_name + ".idx";
+    
+    std::cout << "Creating index file: " << index_file << std::endl;
+    
+    // Create empty index file
+    std::ofstream file(index_file, std::ios::binary);
+    if (!file) {
+        std::cerr << "Failed to create index file: " << index_file << std::endl;
         return false;
     }
     
-        std::cout << "Successfully created index file" << std::endl;
-        return true;
-    } catch (const std::exception& e) {
-        std::cerr << "Error creating index: " << e.what() << std::endl;
+    file.close();
+    
+    std::cout << "Successfully created file: " << index_file << std::endl;
+    
+    // For backward compatibility, still call writePage
+    Page page;
+    page.clear();
+    page.setNumKeys(0);
+    
+    if (!storage_manager->writePage(index_file, 0, page)) {
+        std::cerr << "Failed to write index page" << std::endl;
         return false;
     }
+    
+    std::cout << "Successfully created index file" << std::endl;
+    return true;
 }
 
-bool IndexManager::exists(const std::string& index_name, int key) {
-    try {
-        // Ensure we're using the full path with data directory
-        std::string full_path = "./data/" + index_name;
-        
-        std::vector<IndexRecord> records;
-        if (!readIndexRecords(full_path, records)) {
-            return false;
-        }
-        
-        // Binary search for the key
-        auto it = std::lower_bound(records.begin(), records.end(), key,
-            [](const IndexRecord& record, int k) { return record.key < k; });
-            
-        return (it != records.end() && it->key == key);
-    } catch (const std::exception& e) {
-        std::cerr << "Error checking if key exists: " << e.what() << std::endl;
-        return false;
-    }
-}
-
-bool IndexManager::dropIndex(const std::string& table_name,
+bool IndexManager::dropIndex(const std::string& db_name, 
+                           const std::string& table_name, 
                            const std::string& column_name) {
-    std::string index_name = table_name + "_" + column_name + ".idx";
-    return storage_manager->dropTable("", index_name);
-}
-
-void IndexManager::sortIndexRecords(std::vector<IndexRecord>& records) {
-    std::sort(records.begin(), records.end(),
-        [](const IndexRecord& a, const IndexRecord& b) { return a.key < b.key; });
-}
-
-bool IndexManager::writeIndexRecord(const std::string& index_name, const IndexRecord& record) {
-    try {
-        // Use the provided path as is since it should already be complete
-        std::string full_path = index_name;
-        
-        std::vector<IndexRecord> records;
-        if (!readIndexRecords(full_path, records)) {
-            records.clear();
-        }
-        
-        records.push_back(record);
-        sortIndexRecords(records);
-        
-        Page page;
-        size_t offset = 0;
-        
-        for (const auto& r : records) {
-            page.writeData(offset, &r, sizeof(IndexRecord));
-            offset += sizeof(IndexRecord);
-        }
-        
-        page.setFreeSpace(PAGE_SIZE - offset);
-        return storage_manager->writePage(full_path, 0, page);
-    } catch (const std::exception& e) {
-        std::cerr << "Error writing index record: " << e.what() << std::endl;
+    std::string index_file = "./data/" + db_name + "/" + table_name + "_" + column_name + ".idx";
+    
+    if (std::remove(index_file.c_str()) != 0) {
+        std::cerr << "Failed to remove index file: " << index_file << std::endl;
         return false;
     }
-}
-
-bool IndexManager::readIndexRecords(const std::string& index_name, std::vector<IndexRecord>& records) {
-    try {
-        // Use the provided path as is since it should already be complete
-        std::string full_path = index_name;
-        
-        Page page;
-        if (!storage_manager->readPage(full_path, 0, page)) {
-            return false;
-        }
-        
-        size_t record_count = (PAGE_SIZE - page.getFreeSpace()) / sizeof(IndexRecord);
-        records.clear();
-        
-        for (size_t i = 0; i < record_count; i++) {
-            IndexRecord record;
-            page.readData(i * sizeof(IndexRecord), &record, sizeof(IndexRecord));
-            records.push_back(record);
-        }
-        
+    
     return true;
-    } catch (const std::exception& e) {
-        std::cerr << "Error reading index records: " << e.what() << std::endl;
-        return false;
-    }
 }
 
-bool IndexManager::insert(const std::string& index_file, int key, [[maybe_unused]] const Record& record) {
-    try {
-        // Ensure we're using the full path
-        std::string full_path = "./data/" + index_file;
-        std::cout << "Inserting into index file: " << full_path << std::endl;
-
-        // Create index record
-        IndexRecord index_record;
-        index_record.key = key;
-        index_record.page_id = 0;  // For now, we'll store all records in page 0
-        
-        // Read existing records
-        std::vector<IndexRecord> records;
-        if (!readIndexRecords(full_path, records)) {
-            std::cout << "No existing records found in index" << std::endl;
-            records.clear();
-        }
-        
-        // Check for duplicate keys
-        for (const auto& rec : records) {
-            if (rec.key == key) {
-                std::cerr << "Duplicate key found in index: " << key << std::endl;
-                return false;
+bool IndexManager::insert(const std::string& index_file, int key, const Record& record) {
+    // Fix path to include ./data/ prefix if not already included
+    std::string full_path = index_file;
+    if (full_path.substr(0, 7) != "./data/") {
+        full_path = "./data/" + index_file;
+    }
+    
+    std::cout << "Inserting into index file: " << full_path << std::endl;
+    
+    // Load all existing keys from index
+    std::vector<int> keys;
+    std::vector<Record> records;
+    
+    if (std::filesystem::exists(full_path)) {
+        std::ifstream file(full_path, std::ios::binary);
+        if (file) {
+            // Read all keys from index
+            int k;
+            while (file >> k) {
+                keys.push_back(k);
+                file.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
             }
+            file.close();
         }
-        
-        // Add new record and sort
-        records.push_back(index_record);
-        sortIndexRecords(records);
-        
-        // Write back to file
-        Page page;
-        size_t offset = 0;
-        
-        for (const auto& rec : records) {
-            page.writeData(offset, &rec, sizeof(IndexRecord));
-            offset += sizeof(IndexRecord);
-        }
-        
-        page.setFreeSpace(PAGE_SIZE_BYTES - offset);
-        bool success = storage_manager->writePage(full_path, 0, page);
-        
-        if (success) {
-            std::cout << "Successfully updated index file with key: " << key << std::endl;
-        } else {
-            std::cerr << "Failed to write to index file" << std::endl;
-        }
-        
-        return success;
-    } catch (const std::exception& e) {
-        std::cerr << "Error inserting into index: " << e.what() << std::endl;
+    }
+    
+    // Add the new key if it doesn't exist
+    if (std::find(keys.begin(), keys.end(), key) == keys.end()) {
+        keys.push_back(key);
+        records.push_back(record);
+    }
+    
+    // Write keys back to index file
+    std::ofstream out_file(full_path, std::ios::binary);
+    if (!out_file) {
+        std::cerr << "Failed to open index file for writing: " << full_path << std::endl;
         return false;
     }
-}
-
-bool IndexManager::search(const std::string& index_file,
-                        const std::string& op,
-                        int value,
-                        std::vector<int>& result) {
-    try {
-        std::vector<IndexRecord> records;
-        result.clear();
-        
-        if (!readIndexRecords(index_file, records)) {
-            std::cerr << "Failed to read index records from: " << index_file << std::endl;
-            return false;
-        }
-
-        std::cout << "Found " << records.size() << " records in index" << std::endl;
-
-        // Sort records for efficient searching
-        sortIndexRecords(records);
-
-        // Perform search based on operator
-        if (op == "=") {
-            searchEqual(records, value, result);
-        } else if (op == ">") {
-            searchGreaterThan(records, value, result, false);
-        } else if (op == ">=") {
-            searchGreaterThan(records, value, result, true);
-        } else if (op == "<") {
-            searchLessThan(records, value, result, false);
-        } else if (op == "<=") {
-            searchLessThan(records, value, result, true);
-        } else if (op == "!=") {
-            searchNotEqual(records, value, result);
-        }
-
-        std::cout << "Found " << result.size() << " matching records" << std::endl;
+    
+    // Sort keys for faster searching
+    std::sort(keys.begin(), keys.end());
+    
+    for (int k : keys) {
+        out_file << k << std::endl;
+    }
+    
+    out_file.close();
+    if (!out_file) {
+        std::cerr << "Error writing to index file" << std::endl;
+        return false;
+    }
+    
+    std::cout << "Successfully updated index file with key: " << key << std::endl;
     return true;
-    } catch (const std::exception& e) {
-        std::cerr << "Error in index search: " << e.what() << std::endl;
+}
+
+bool IndexManager::exists(const std::string& index_file, int key) {
+    // Fix path to include ./data/ prefix if not already included
+    std::string full_path = index_file;
+    if (full_path.substr(0, 7) != "./data/") {
+        full_path = "./data/" + index_file;
+    }
+    
+    if (!std::filesystem::exists(full_path)) {
+        std::cout << "Index file does not exist: " << full_path << std::endl;
         return false;
     }
+    
+    std::ifstream file(full_path, std::ios::binary);
+    if (!file) {
+        std::cerr << "Failed to open index file: " << full_path << std::endl;
+        return false;
+    }
+    
+    int k;
+    while (file >> k) {
+        if (k == key) {
+            file.close();
+            return true;
+        }
+        file.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    }
+    
+    file.close();
+    return false;
 }
 
-void IndexManager::searchEqual(const std::vector<IndexRecord>& records,
-                             int value,
-                             std::vector<int>& result) {
-    for (const auto& record : records) {
-        if (record.key == value) {
-            result.push_back(record.key);
-            break;  // Since keys are unique for primary key indexes
+bool IndexManager::search(const std::string& index_file, 
+                        const std::string& op, 
+                        int value, 
+                        std::vector<int>& result) {
+    if (!std::filesystem::exists(index_file)) {
+        std::cout << "Index file does not exist: " << index_file << std::endl;
+        return false;
+    }
+    
+    std::ifstream file(index_file, std::ios::binary);
+    if (!file) {
+        std::cerr << "Failed to open index file: " << index_file << std::endl;
+        return false;
+    }
+    
+    // Read all keys from index
+    std::vector<int> all_keys;
+    int k;
+    while (file >> k) {
+        all_keys.push_back(k);
+        file.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    }
+    file.close();
+    
+    std::cout << "Found " << all_keys.size() << " records in index" << std::endl;
+    
+    // Filter keys based on operator
+    for (int key : all_keys) {
+        bool match = false;
+        
+        if (op == "=") match = (key == value);
+        else if (op == "<") match = (key < value);
+        else if (op == ">") match = (key > value);
+        else if (op == "<=") match = (key <= value);
+        else if (op == ">=") match = (key >= value);
+        else if (op == "!=") match = (key != value);
+        
+        if (match) {
+            result.push_back(key);
         }
     }
-}
-
-void IndexManager::searchGreaterThan(const std::vector<IndexRecord>& records,
-                                   int value,
-                                   std::vector<int>& result,
-                                   bool include_equal) {
-    for (const auto& record : records) {
-        if ((include_equal && record.key >= value) ||
-            (!include_equal && record.key > value)) {
-            result.push_back(record.key);
-        }
-    }
-}
-
-void IndexManager::searchLessThan(const std::vector<IndexRecord>& records,
-                                int value,
-                                std::vector<int>& result,
-                                bool include_equal) {
-    for (const auto& record : records) {
-        if ((include_equal && record.key <= value) ||
-            (!include_equal && record.key < value)) {
-            result.push_back(record.key);
-        }
-    }
-}
-
-void IndexManager::searchNotEqual(const std::vector<IndexRecord>& records,
-                                int value,
-                                std::vector<int>& result) {
-    for (const auto& record : records) {
-        if (record.key != value) {
-            result.push_back(record.key);
-        }
-    }
+    
+    std::cout << "Found " << result.size() << " matching records" << std::endl;
+    return true;
 }
 
 // BPlusTree implementation
@@ -610,4 +520,56 @@ void BPlusTree::deserializeNode(const Page& page, IndexNode& node) {
         std::cerr << "Error in deserializeNode: " << e.what() << std::endl;
         throw;
     }
+}
+
+bool IndexManager::remove(const std::string& index_file, int key) {
+    try {
+        // Read the index page
+        Page index_page;
+        if (!storage_manager->readPage(index_file, 0, index_page)) {
+            std::cerr << "Failed to read index page" << std::endl;
+            return false;
+        }
+
+        // Find and remove the key
+        std::vector<int> keys;
+        size_t offset = 0;
+        while (offset < PAGE_SIZE_BYTES - index_page.getFreeSpace()) {
+            IndexRecord record;
+            index_page.readData(offset, &record, sizeof(IndexRecord));
+            if (record.key != key) {
+                keys.push_back(record.key);
+            }
+            offset += sizeof(IndexRecord);
+        }
+
+        // Write back the remaining keys
+        index_page.clear();
+        offset = 0;
+        for (int k : keys) {
+            IndexRecord rec{k, 0};  // page_id is 0 since we're using a simple index
+            index_page.writeData(offset, &rec, sizeof(IndexRecord));
+            offset += sizeof(IndexRecord);
+        }
+        index_page.setFreeSpace(PAGE_SIZE_BYTES - offset);
+
+        // Write the updated page back
+        if (!storage_manager->writePage(index_file, 0, index_page)) {
+            std::cerr << "Failed to write index page" << std::endl;
+            return false;
+        }
+
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Error removing key from index: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+// Add this helper function to your utilities
+std::string getFullPath(const std::string& path) {
+    if (path.substr(0, 7) == "./data/") {
+        return path;
+    }
+    return "./data/" + path;
 }

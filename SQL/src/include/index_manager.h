@@ -18,7 +18,8 @@ public:
     bool createIndex(const std::string& db_name,
                     const std::string& table_name,
                     const std::string& column_name);
-    bool dropIndex(const std::string& table_name, 
+    bool dropIndex(const std::string& db_name,
+                  const std::string& table_name,
                   const std::string& column_name);
     bool insert(const std::string& index_file, int key, const Record& record);
     bool exists(const std::string& index_file, int key);
@@ -27,6 +28,7 @@ public:
                 const std::string& op,
                 int value,
                 std::vector<int>& result);
+    bool remove(const std::string& index_file, int key);
 
 private:
     StorageManager* storage_manager;
@@ -52,4 +54,4 @@ private:
     void searchNotEqual(const std::vector<IndexRecord>& records,
                        int value,
                        std::vector<int>& result);
-}; 
+};

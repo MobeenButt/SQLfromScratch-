@@ -109,6 +109,23 @@ struct Record {
             return false;
         }
     }
+
+    // Helper functions to match the error messages
+    static size_t getRecordSize(const Record& record) {
+        return record.getSize();
+    }
+
+    static bool serializeRecord(const Record& record, char* buffer, size_t buffer_size) {
+        if (buffer_size < record.getSize()) {
+            return false;
+        }
+        record.serialize(buffer);
+        return true;
+    }
+
+    static bool deserializeRecord(Record& record, const char* buffer, size_t buffer_size) {
+        return record.deserialize(buffer, buffer_size);
+    }
 };
 
 class StorageManager {
@@ -137,6 +154,9 @@ public:
                   const std::string& table_name,
                   int key,
                   Record& record);
+
+    bool writeAllRecords(const std::string& filename, 
+                        const std::vector<Record>& records);
 
 private:
     std::string data_directory;

@@ -42,6 +42,21 @@ public:
     bool remove(const std::string& table_name, 
                const std::string& where_clause);
 
+    // Join types enum
+    enum class JoinType {
+        INNER,
+        LEFT,
+        RIGHT
+    };
+
+    // Join method
+    std::vector<Record> join(
+        const std::string& left_table,
+        const std::string& right_table,
+        const std::string& left_column,
+        const std::string& right_column,
+        JoinType join_type = JoinType::INNER);
+
 private:
     std::string db_name;
     std::string data_path;
@@ -68,6 +83,15 @@ private:
                       const std::string& op);
 
     std::string getTablePath(const std::string& table_name);
+
+    // Helper methods for join
+    bool findJoinColumns(
+        const TableInfo* left_table,
+        const TableInfo* right_table,
+        const std::string& left_column,
+        const std::string& right_column,
+        int& left_col_idx,
+        int& right_col_idx);
 };
 
 #endif // DATABASE_H 
