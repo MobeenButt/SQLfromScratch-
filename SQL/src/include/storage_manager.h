@@ -126,6 +126,17 @@ struct Record {
     static bool deserializeRecord(Record& record, const char* buffer, size_t buffer_size) {
         return record.deserialize(buffer, buffer_size);
     }
+    // Helper to parse a column value as double (for SUM/AVG)
+    double getNumericValue(size_t column_index) const {
+        if (column_index >= values.size()) {
+            throw std::out_of_range("Column index out of range");
+        }
+        try {
+            return std::stod(values[column_index]);
+        } catch (...) {
+            throw std::runtime_error("Non-numeric value");
+        }
+    }
 };
 
 class StorageManager {
