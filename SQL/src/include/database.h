@@ -41,6 +41,8 @@ public:
                const std::string& where_clause);
     bool remove(const std::string& table_name, 
                const std::string& where_clause);
+               int getColumnIndex(TableInfo* table, const std::string& col_name);
+
 
     // Join types enum
     enum class JoinType {
@@ -56,6 +58,21 @@ public:
         const std::string& left_column,
         const std::string& right_column,
         JoinType join_type = JoinType::INNER);
+
+        struct GroupResult {
+            std::string group_key;
+            double sum = 0;
+            int count = 0;
+            double min = std::numeric_limits<double>::max();
+            double max = std::numeric_limits<double>::lowest();
+        };
+    
+        std::vector<Record> groupQuery(
+            const std::string& table_name,
+            const std::string& group_column,
+            const std::string& agg_function,
+            const std::string& where_clause = "",
+            const std::string& having_clause = "");
 
 private:
     std::string db_name;

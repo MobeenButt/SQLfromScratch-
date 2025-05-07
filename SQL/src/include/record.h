@@ -1,3 +1,8 @@
+#include <vector>
+#include <string>
+#include <cstring>
+#include <stdexcept>
+
 class Record {
 public:
     std::vector<std::string> values;
@@ -27,4 +32,5 @@ public:
         }
         return total_size;
     }
+    
 }; 
