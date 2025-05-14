@@ -1,4 +1,4 @@
-# SQLfromScratch-
+# SQLfromScratch
 
 A lightweight SQL engine built from scratch in C++ that parses and executes basic SQL commands. This project demonstrates fundamental database operations including table creation, data insertion, and querying, all without relying on external database systems.
 
@@ -119,10 +119,3 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 For questions or suggestions, feel free to reach out to [mobeen914butt@gmail.com](mailto:mobeen914butt@gmail.com).([GitHub][1])
 
----
-
-*Note: This README is based on the available information from the [SQLfromScratch- GitHub repository](https://github.com/MobeenButt/SQLfromScratch-). For the most accurate and detailed information, please refer to the repository directly.*
-
----
-
-[1]: https://github.com/MobeenButt?utm_source=chatgpt.com "Mobeen Butt MobeenButt - GitHub"
