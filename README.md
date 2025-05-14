@@ -117,5 +117,5 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 ## 📬 Contact
 
-For questions or suggestions, feel free to reach out to [mobeen914butt@gmail.com](mailto:mobeen914butt@gmail.com).([GitHub][1])
+For questions or suggestions, feel free to reach out to [mobeen914butt@gmail.com](mailto:mobeen914butt@gmail.com)[anasfaizsahi6@gmail.com](mailto:anasfaizsahi6@gmail.com)
 
