@@ -1,0 +1,17 @@
+CREATE DATABASE company
+USE DATABASE company
+CREATE TABLE employees (id INT PRIMARY KEY, name VARCHAR(50), salary INT, department VARCHAR(30))
+INSERT INTO employees VALUES (1, 'John', 50000, 'IT')
+INSERT INTO employees VALUES (2, 'Alice', 60000, 'HR')
+INSERT INTO employees VALUES (3, 'Bob', 55000, 'IT')
+INSERT INTO employees VALUES (4, 'Carol', 70000, 'HR')
+SELECT * FROM employees
+SELECT department, AVG(salary) FROM employees GROUP BY department
+SELECT department, COUNT(*) FROM employees GROUP BY department HAVING COUNT(*) > 1
+CREATE INDEX ON employees(salary)
+SELECT * FROM employees WHERE salary > 55000
+UPDATE employees SET salary = 65000 WHERE id = 2
+SELECT * FROM employees
+UPDATE employees SET salary = 75000 WHERE id = 3
+SELECT * FROM employees
+EXIT
